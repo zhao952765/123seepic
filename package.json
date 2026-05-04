@@ -1,0 +1,195 @@
+{
+  "name": "123-image-viewer",
+  "displayName": "123看图",
+  "description": "极简无广告的图片与 PDF 查看器，专注查看，体验极致纯净。",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization",
+    "Viewers"
+  ],
+  "keywords": [
+    "image",
+    "picture",
+    "viewer",
+    "pdf",
+    "photo",
+    "123看图",
+    "image viewer",
+    "pdf viewer"
+  ],
+  "publisher": "your-publisher-name",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/123-image-viewer.git"
+  },
+  "homepage": "https://github.com/your-username/123-image-viewer",
+  "bugs": {
+    "url": "https://github.com/your-username/123-image-viewer/issues"
+  },
+  "license": "MIT",
+  "main": "main.js",
+  "activationEvents": [
+    "onCommand:123-image-viewer.openViewer",
+    "onCustomEditor:123-image-viewer.imageViewer",
+    "onCustomEditor:123-image-viewer.pdfViewer"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "123-image-viewer.imageViewer",
+        "displayName": "123 Image Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.{png,jpg,jpeg,gif,bmp,webp,svg,ico,tiff}"
+          }
+        ]
+      },
+      {
+        "viewType": "123-image-viewer.pdfViewer",
+        "displayName": "123 PDF Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "123-image-viewer.openViewer",
+        "title": "打开 123看图",
+        "category": "123看图"
+      },
+      {
+        "command": "123-image-viewer.openSettings",
+        "title": "打开设置",
+        "category": "123看图"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "123-image-viewer.openViewer",
+          "group": "navigation",
+          "when": "resourceExtname == '.png' || resourceExtname == '.jpg' || resourceExtname == '.jpeg' || resourceExtname == '.gif' || resourceExtname == '.bmp' || resourceExtname == '.webp' || resourceExtname == '.svg' || resourceExtname == '.ico' || resourceExtname == '.tiff' || resourceExtname == '.pdf'"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "123看图",
+      "properties": {
+        "123-image-viewer.theme": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "dark",
+            "light"
+          ],
+          "default": "auto",
+          "description": "选择查看器主题"
+        },
+        "123-image-viewer.zoomStep": {
+          "type": "number",
+          "default": 10,
+          "description": "缩放步进百分比"
+        },
+        "123-image-viewer.enableThumbnails": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用缩略图侧边栏"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "pretest": "npm run compile && npm run lint",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package",
+    "package:exe": "echo '如需打包独立的Windows EXE，请参阅 README.md 中的说明'",
+    "electron": "electron .",
+    "electron:start": "electron main.js",
+    "electron:build": "electron-builder",
+    "electron:build:portable": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/vsce": "^2.15.0",
+    "electron": "41.4.0",
+    "electron-builder": "26.8.1",
+    "electron-packager": "^17.1.2",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.0"
+  },
+  "build": {
+    "appId": "com.123image.viewer",
+    "productName": "123看图",
+    "directories": {
+      "output": "dist-release"
+    },
+    "files": [
+      "main.js",
+      "viewer.html",
+      "123.ico",
+      "package.json",
+      "!123看图便携版/**",
+      "!123看图_安装程序.exe",
+      "!.vscode/**",
+      "!src/**",
+      "!tsconfig.json",
+      "!README.md",
+      "!viewer-optimized.html",
+      "!打包到新文件夹.bat",
+      "!LICENSE",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.d.ts",
+      "!node_modules/**/test/**",
+      "!node_modules/**/tests/**",
+      "!node_modules/**/docs/**",
+      "!node_modules/**/.DS_Store",
+      "!node_modules/**/CHANGELOG*",
+      "!node_modules/**/changelog*",
+      "!node_modules/**/History*",
+      "!node_modules/**/history*"
+    ],
+    "extraMetadata": {
+      "author": "123看图开发团队"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "123.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "license": "LICENSE",
+      "installerIcon": "123.ico",
+      "uninstallerIcon": "123.ico",
+      "installerHeaderIcon": "123.ico"
+    },
+    "publish": null,
+    "npmRebuild": false,
+    "asar": true,
+    "compression": "maximum",
+    "electronCompile": false,
+    "extends": null
+  }
+}
