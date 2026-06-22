@@ -1,0 +1,102 @@
+appId: com.viewer123.app
+productName: 123看图
+copyright: © 2026 123 Viewer Team
+
+# 打包输出目录
+directories:
+  output: release
+  buildResources: build-resources
+
+# Electron 入口文件
+files:
+  - electron/**/*
+  - dist/**/*
+  - 123.ico
+  - package.json
+
+# 应用图标
+win:
+  icon: 123.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: msi
+      arch:
+        - x64
+  fileAssociations:
+    - ext: jpg
+      name: JPEG Image
+      description: JPEG 图像
+      icon: 123.ico
+      role: Viewer
+    - ext: jpeg
+      name: JPEG Image
+      description: JPEG 图像
+      icon: 123.ico
+      role: Viewer
+    - ext: png
+      name: PNG Image
+      description: PNG 图像
+      icon: 123.ico
+      role: Viewer
+    - ext: webp
+      name: WebP Image
+      description: WebP 图像
+      icon: 123.ico
+      role: Viewer
+    - ext: bmp
+      name: BMP Image
+      description: BMP 图像
+      icon: 123.ico
+      role: Viewer
+    - ext: tiff
+      name: TIFF Image
+      description: TIFF 图像
+      icon: 123.ico
+      role: Viewer
+    - ext: gif
+      name: GIF Image
+      description: GIF 图像
+      icon: 123.ico
+      role: Viewer
+    - ext: ico
+      name: ICO Image
+      description: ICO 图标
+      icon: 123.ico
+      role: Viewer
+    - ext: svg
+      name: SVG Image
+      description: SVG 矢量图
+      icon: 123.ico
+      role: Viewer
+    - ext: pdf
+      name: PDF Document
+      description: PDF 文档
+      icon: 123.ico
+      role: Viewer
+
+# NSIS 安装程序配置
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 123看图
+  installerIcon: 123.ico
+  uninstallerIcon: 123.ico
+  installerHeaderIcon: 123.ico
+  artifactName: 123看图-${version}-Setup.${ext}
+
+# MSI 安装程序配置
+msi:
+  artifactName: 123看图-${version}.${ext}
+  shortcutName: 123看图
+  createDesktopShortcut: true
+
+# ASAR 配置（sharp/wallpaper 原生模块必须解包）
+asar:
+  smartUnpack: true
+asarUnpack:
+  - "node_modules/sharp/**"
+  - "node_modules/wallpaper/**"

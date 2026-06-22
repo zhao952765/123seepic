@@ -1,0 +1,45 @@
+{
+  "name": "123-viewer",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "极致轻量、高性能的图片和PDF查看器",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "dev:electron": "concurrently -k \"npm run dev\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "build:electron": "npm run build && electron-builder"
+  },
+  "scriptsComments": {
+    "dev": "启动 Vite 开发服务器，仅用于前端开发调试",
+    "build": "构建前端产物到 dist/ 目录",
+    "preview": "本地预览已构建的前端产物",
+    "check": "运行 SvelteKit 同步与 TypeScript 类型检查",
+    "check:watch": "类型检查监听模式",
+    "dev:electron": "并行启动 Vite 开发服务器 + Electron，支持热重载",
+    "build:electron": "构建前端并调用 electron-builder 打包 Windows 安装程序"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^2.0.3",
+    "@sveltejs/kit": "^1.30.4",
+    "concurrently": "^8.2.2",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "electron-store": "^8.2.0",
+    "svelte": "^4.2.20",
+    "svelte-check": "^3.8.6",
+    "terser": "^5.46.2",
+    "typescript": "^5.9.3",
+    "vite": "^4.5.14",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38",
+    "sharp": "^0.33.0",
+    "wallpaper": "^7.0.0"
+  }
+}
