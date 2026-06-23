@@ -17,16 +17,14 @@
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D | null = null;
   
-  // ✅ PDF渲染引擎
   let pdfEngine: PdfRenderEngine | null = null;
   
-  // ✅ 状态管理
   let currentPage = 1;
   let totalPages = 0;
   let currentScale = 1.0;
   let isRendering = false;
+  let pdfError: string | null = null;
   
-  // ✅ 缩放优化
   let zoomTimeout: number | null = null;
   let isZooming = false;
 
@@ -36,25 +34,56 @@
       desynchronized: true
     });
     
-    // ✅ 初始化PDF渲染引擎
-    pdfEngine = new PdfRenderEngine(5); // 缓存5页
-    
+    pdfEngine = new PdfRenderEngine(5);
     await loadPdf();
+    
+    // KN-005: 窗口大小变化时自动适配 PDF
+    window.addEventListener('resize', handleResize);
   });
 
+  // KN-005: 窗口 resize 适配
+  function handleResize() {
+    if (!container || !pdfEngine || pdfError) return;
+    const state = get(viewerState);
+    if (state.fitMode === 'fit') {
+      fitToPage();
+    } else if (state.fitMode === 'width') {
+      fitToWidth();
+    }
+  }
+
+  // ✅ 滚轮：Ctrl+Wheel 缩放，Plain Wheel 翻页
+  function handleWheel(event: WheelEvent) {
+    event.preventDefault();
+
+    if (event.ctrlKey) {
+      // === Ctrl+Wheel: 缩放 ===
+      const newScale = event.deltaY > 0
+        ? Math.max(currentScale - 0.2, 0.2)
+        : Math.min(currentScale + 0.2, 5.0);
+      handleZoom(newScale);
+    } else {
+      // === Plain Wheel: 翻页 ===
+      if (event.deltaY > 50) {
+        nextPage();
+      } else if (event.deltaY < -50) {
+        prevPage();
+      }
+    }
+  }
+
   onDestroy(async () => {
-    // ✅ 清理所有资源
+    window.removeEventListener('resize', handleResize);
+    
     if (zoomTimeout) {
       clearTimeout(zoomTimeout);
     }
     
-    // ✅ 销毁PDF引擎（自动清理所有Canvas和缓存）
     if (pdfEngine) {
       await pdfEngine.destroy();
       pdfEngine = null;
     }
     
-    // ✅ 清空Canvas
     if (canvas) {
       canvas.width = 0;
       canvas.height = 0;
@@ -65,9 +94,8 @@
 
   async function loadPdf() {
     try {
-      console.log(`⏳ 加载PDF文档: ${filePath}`);
+      pdfError = null;
       
-      // ✅ 通过渲染引擎加载
       await pdfEngine!.loadDocument(pdfjsLib, filePath);
       
       const doc = pdfEngine!.getDocument();
@@ -82,11 +110,16 @@
       currentPage = 1;
       await renderPage(currentPage);
       
-      // ✅ 预加载相邻页面
       await pdfEngine!.preloadAdjacentPages(currentPage, totalPages);
-      
-      console.log(`✅ PDF加载完成: ${totalPages}页`);
-    } catch (error) {
+    } catch (error: any) {
+      const msg = error?.message || String(error);
+      if (msg.includes('password') || msg.includes('encrypt') || msg.includes('No password')) {
+        pdfError = '此 PDF 文件已加密，需要密码才能打开。当前版本暂不支持密码输入，请使用其他工具解密后重试。';
+      } else if (msg.includes('Invalid PDF') || msg.includes('not a valid PDF')) {
+        pdfError = '无法打开此文件：文件格式无效或已损坏。';
+      } else {
+        pdfError = `加载 PDF 失败：${msg}`;
+      }
       console.error('加载 PDF 失败:', error);
     }
   }
@@ -210,8 +243,16 @@
   }
 </script>
 
-<div class="pdf-viewer" bind:this={container}>
-  <canvas bind:this={canvas} />
+<div class="pdf-viewer" bind:this={container} on:wheel|nonpassive={handleWheel}>
+  {#if pdfError}
+    <div class="error-overlay">
+      <div class="error-icon">⚠️</div>
+      <p class="error-title">PDF 无法打开</p>
+      <p class="error-message">{pdfError}</p>
+    </div>
+  {:else}
+    <canvas bind:this={canvas} on:wheel|nonpassive={handleWheel} />
+  {/if}
   
   {#if isRendering}
     <div class="loading-overlay">
@@ -225,7 +266,7 @@
   .pdf-viewer {
     width: 100%;
     height: 100%;
-    overflow: auto;
+    overflow: hidden;
     background: #2a2a2a;
     display: flex;
     align-items: center;
@@ -252,6 +293,36 @@
     justify-content: center;
     color: #fff;
     z-index: 10;
+  }
+
+  .error-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #ccc;
+    text-align: center;
+    padding: 40px;
+    max-width: 500px;
+  }
+
+  .error-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+  }
+
+  .error-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #e74c3c;
+    margin: 0 0 12px 0;
+  }
+
+  .error-message {
+    font-size: 14px;
+    color: #999;
+    line-height: 1.6;
+    margin: 0;
   }
   
   .spinner {

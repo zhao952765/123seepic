@@ -1,5 +1,20 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import type { ViewerState, ImageInfo, PdfInfo } from '../types/image';
+
+// 沉浸模式 — 独立于 ViewerState，简化切换逻辑
+export const immersiveMode = writable(false);
+
+export function toggleImmersiveMode() {
+  immersiveMode.update(v => !v);
+}
+
+export function enterImmersiveMode() {
+  immersiveMode.set(true);
+}
+
+export function exitImmersiveMode() {
+  immersiveMode.set(false);
+}
 
 // 初始状态
 const initialState: ViewerState = {
@@ -69,7 +84,16 @@ export const viewerActions = {
   setZoom: (zoom: number) => {
     viewerState.update(state => ({
       ...state,
-      zoom: Math.max(0.1, Math.min(10, zoom)), // 限制在 10% - 1000%
+      zoom: Math.max(0.05, Math.min(10, zoom)), // 限制在 5% - 1000%
+    }));
+  },
+  
+  // 缩放 + 同时设置 fitMode（用于手动缩放时切换到 custom）
+  setZoomAndFitMode: (zoom: number, fitMode: 'fit' | 'fill' | 'actual' | 'width' | 'custom') => {
+    viewerState.update(state => ({
+      ...state,
+      zoom: Math.max(0.05, Math.min(10, zoom)),
+      fitMode,
     }));
   },
   
@@ -98,7 +122,7 @@ export const viewerActions = {
   },
   
   // 适应模式
-  setFitMode: (mode: 'fit' | 'fill' | 'actual' | 'width') => {
+  setFitMode: (mode: 'fit' | 'fill' | 'actual' | 'width' | 'custom') => {
     viewerState.update(state => ({
       ...state,
       fitMode: mode,

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { viewerState, viewerActions } from '$lib/stores/viewer';
+  import { onMount, onDestroy, tick } from 'svelte';
+  import { viewerState, viewerActions, immersiveMode, enterImmersiveMode, exitImmersiveMode } from '$lib/stores/viewer';
   import { registerKeyboardShortcuts, setOpenFileDialogHandler } from '$lib/utils/shortcuts';
   import { loadFileInfo, isImageFile, isPdfFile } from '$lib/utils/imageProcessor';
   
@@ -12,6 +12,7 @@
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import Sidebar from '$lib/components/Sidebar.svelte';
   import TitleBar from '$lib/components/TitleBar.svelte';
+  import ImmersiveControls from '$lib/components/ImmersiveControls.svelte';
 
   let filePath = '';
   let isLoading = false;
@@ -25,6 +26,50 @@
   let contextMenuVisible = false;
   let contextMenuPosition = { x: 0, y: 0 };
 
+  // 沉浸模式 — 底部控制栏引用
+  let immersiveControls: any = null;
+
+  // 沉浸模式 — 鼠标跟踪
+  function onMouseMove(e: MouseEvent) {
+    if (!$immersiveMode) return;
+    const bottomZone = window.innerHeight - 40;
+    if (e.clientY >= bottomZone) {
+      immersiveControls?.show();
+    } else {
+      immersiveControls?.scheduleHide();
+    }
+  }
+
+  // 沉浸模式 — 上/下一张导航
+  async function navigateTo(direction: -1 | 1) {
+    if (!filePath) return;
+    try {
+      const lastSep = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
+      const parentDir = lastSep >= 0 ? filePath.substring(0, lastSep) : '.';
+      const entries = await window.electronAPI.listDirectory(parentDir);
+      if (!entries || entries.length === 0) return;
+
+      const imageFiles = entries
+        .filter((f: any) => !f.isDir && (isImageFile(f.name) || isPdfFile(f.name)))
+        .map((f: any) => f.path);
+
+      if (imageFiles.length <= 1) return;
+
+      const idx = imageFiles.indexOf(filePath);
+      if (idx === -1) return;
+
+      const nextIdx = direction === 1
+        ? Math.min(imageFiles.length - 1, idx + 1)
+        : Math.max(0, idx - 1);
+
+      if (nextIdx !== idx) {
+        openFile(imageFiles[nextIdx]);
+      }
+    } catch (err) {
+      console.warn('沉浸模式导航失败:', err);
+    }
+  }
+
   // 初始化
   onMount(() => {
     // 注册快捷键
@@ -34,8 +79,8 @@
     setOpenFileDialogHandler(handleOpenFileDialog);
     
     // 监听文件打开请求（来自命令行或单实例）
-    const cleanupFileOpen = window.electronAPI.onFileOpenRequest((filePath: string) => {
-      openFile(filePath);
+    const cleanupFileOpen = window.electronAPI.onFileOpenRequest((fPath: string) => {
+      openFile(fPath);
     });
     
     // 监听文件选择事件（从侧边栏）
@@ -44,6 +89,33 @@
       openFile(customEvent.detail);
     };
     window.addEventListener('file-select', handleFileSelect);
+
+    // 沉浸模式 — 上/下一张事件
+    const handleNavPrev = () => navigateTo(-1);
+    const handleNavNext = () => navigateTo(1);
+    window.addEventListener('nav-prev', handleNavPrev);
+    window.addEventListener('nav-next', handleNavNext);
+
+    // 沉浸模式 — 鼠标移动跟踪
+    document.addEventListener('mousemove', onMouseMove);
+
+    // 全局拖拽事件监听（捕获阶段，与 preload 层双重保障）
+    const handleDragoverWindow = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+    const handleDropWindow = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleDrop(e);
+    };
+    window.addEventListener('dragover', handleDragoverWindow, { capture: true });
+    window.addEventListener('drop', handleDropWindow, { capture: true });
+    document.addEventListener('dragover', handleDragoverWindow, { capture: true });
+    document.addEventListener('drop', handleDropWindow, { capture: true });
     
     return () => {
       if (cleanupKeyboard) {
@@ -51,6 +123,13 @@
       }
       cleanupFileOpen();
       window.removeEventListener('file-select', handleFileSelect);
+      window.removeEventListener('nav-prev', handleNavPrev);
+      window.removeEventListener('nav-next', handleNavNext);
+      document.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('dragover', handleDragoverWindow, { capture: true });
+      window.removeEventListener('drop', handleDropWindow, { capture: true });
+      document.removeEventListener('dragover', handleDragoverWindow, { capture: true });
+      document.removeEventListener('drop', handleDropWindow, { capture: true });
     };
   });
 
@@ -60,14 +139,14 @@
     error = null;
     
     try {
-      // 加载文件信息
       const info = await loadFileInfo(path);
       
       if (isImageFile(path)) {
-        viewerActions.setImageInfo(info);
         viewerActions.reset();
+        viewerActions.setImageInfo(info);
         filePath = path;
       } else if (isPdfFile(path)) {
+        viewerActions.reset();
         viewerActions.setPdfInfo({
           path: info.path,
           name: info.name,
@@ -75,16 +154,18 @@
           pageCount: 0,
           currentPage: 1,
         });
-        viewerActions.reset();
         filePath = path;
       } else {
         error = '不支持的文件格式';
       }
     } catch (err) {
       error = `加载文件失败: ${err}`;
-      console.error(err);
     } finally {
       isLoading = false;
+    }
+    
+    if (!error) {
+      enterImmersiveMode();
     }
   }
 
@@ -105,27 +186,35 @@
   async function handleDrop(e: DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const files = e.dataTransfer?.files;
-    if (files && files.length > 0) {
+
+    let files = e.dataTransfer?.files;
+    
+    if ((!files || files.length === 0) && (window as any).__dragDropFiles) {
+      files = (window as any).__dragDropFiles;
+      (window as any).__dragDropFiles = null;
+    }
+    
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    let extractedPath: string | null = null;
+
+    if ((file as any).path) {
+      extractedPath = (file as any).path;
+    }
+
+    if (!extractedPath && window.electronAPI?.getFilePath) {
       try {
-        // Electron 33+ 使用 webUtils.getPathForFile 获取真实路径
-        const firstPath = window.electronAPI.getFilePath(files[0]);
-        if (firstPath) {
-          openFile(firstPath);
-        } else {
-          console.error('无法获取文件路径，files[0]:', files[0]);
-        }
+        extractedPath = window.electronAPI.getFilePath(file);
       } catch (err) {
         console.error('getFilePath 失败:', err);
-        // 兜底：尝试旧版 File.path
-        const fallbackPath = (files[0] as any).path;
-        if (fallbackPath) {
-          openFile(fallbackPath);
-        }
       }
-      if (files.length > 1) {
-        console.log(`拖入 ${files.length} 个文件`);
-      }
+    }
+
+    if (extractedPath) {
+      await openFile(extractedPath);
+    } else {
+      console.error('无法获取拖放文件路径');
     }
   }
 
@@ -144,6 +233,10 @@
   function handleDragOver(e: DragEvent) {
     e.preventDefault();
     e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+    // 高频触发，仅在需要时取消注释下面的日志
   }
 
   function handleDragEnter(e: DragEvent) {
@@ -152,8 +245,14 @@
   }
 
   // 右键菜单处理
-  function handleContextMenu(e: MouseEvent) {
+  async function handleContextMenu(e: MouseEvent) {
     e.preventDefault();
+    
+    // 如果菜单已打开，先关闭再重新打开（确保位置更新，强制触发 reactive 更新）
+    if (contextMenuVisible) {
+      contextMenuVisible = false;
+      await tick();
+    }
     
     // 计算菜单位置，确保不超出窗口边界
     const menuWidth = 220;
@@ -178,20 +277,49 @@
     contextMenuVisible = true;
   }
   
-  // 点击其他地方关闭菜单
-  function handleClick() {
-    contextMenuVisible = false;
-  }
+  // 点击其他地方关闭菜单（由 ContextMenu 组件内部处理）
+
 </script>
 
 <svelte:window 
+  on:dragover|capture|preventDefault|stopPropagation={(e) => {
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }}
+  on:drop|capture|preventDefault|stopPropagation={(e) => {
+    handleDrop(e);
+  }}
   on:keydown={(e) => {
-    // ESC 退出全屏或关闭菜单
+    // ESC — 优先级：退出沉浸模式 > 关闭菜单 > 退出全屏
     if (e.key === 'Escape') {
+      if ($immersiveMode) {
+        exitImmersiveMode();
+        return;
+      }
       if (contextMenuVisible) {
         contextMenuVisible = false;
-      } else if ($viewerState.isFullscreen) {
+        return;
+      }
+      if ($viewerState.isFullscreen) {
         viewerActions.toggleFullscreen();
+      }
+    }
+    
+    // 沉浸模式下：← → 键导航，+ - 键缩放（仅无修饰键时）
+    if ($immersiveMode && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        navigateTo(-1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        navigateTo(1);
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        viewerActions.setZoomAndFitMode($viewerState.zoom * 1.1, 'custom');
+      } else if (e.key === '-') {
+        e.preventDefault();
+        viewerActions.setZoomAndFitMode($viewerState.zoom / 1.1, 'custom');
       }
     }
     
@@ -206,30 +334,39 @@
       }
     }
   }}
-  on:click={handleClick}
+/>
+
+<svelte:body 
+  class:immersive={$immersiveMode}
+  on:dragover={(e) => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer) { e.dataTransfer.dropEffect = 'copy'; } }}
+  on:drop={(e) => {
+    handleDrop(e);
+  }}
 />
 
 <div 
   class="app"
   class:fullscreen={$viewerState.isFullscreen}
-  on:drop={handleDrop}
+  on:drop={(e) => {
+    handleDrop(e);
+  }}
   on:dragover={handleDragOver}
-  ondragenter={handleDragEnter}
-  ondragleave={handleDragOver}
+  on:dragenter={handleDragEnter}
+  on:dragleave={handleDragOver}
   on:contextmenu={handleContextMenu}
 >
   <!-- Win11 标题栏 -->
   <TitleBar />
   
   <!-- 工具栏 -->
-  {#if $viewerState.showToolbar && !$viewerState.isFullscreen}
+  {#if $viewerState.showToolbar && !$viewerState.isFullscreen && !$immersiveMode}
     <Toolbar on:openFile={handleOpenFileDialog} />
   {/if}
   
   <!-- 主内容区 -->
   <div class="main-content">
     <!-- 侧边栏 -->
-    {#if filePath}
+    {#if filePath && !$immersiveMode}
       <Sidebar currentPath={filePath} />
     {/if}
     
@@ -243,11 +380,13 @@
         <p>{error}</p>
       </div>
     {:else if filePath}
-      {#if $viewerState.mode === 'image'}
-        <ImageViewer {filePath} />
-      {:else if $viewerState.mode === 'pdf'}
-        <PDFViewer bind:this={pdfViewerComponent} {filePath} />
-      {/if}
+      {#key filePath}
+        {#if $viewerState.mode === 'image'}
+          <ImageViewer {filePath} />
+        {:else if $viewerState.mode === 'pdf'}
+          <PDFViewer bind:this={pdfViewerComponent} {filePath} />
+        {/if}
+      {/key}
     {:else}
       <div class="welcome">
         <h1>123看图</h1>
@@ -261,18 +400,42 @@
     
     <!-- 右键菜单 -->
     <ContextMenu 
-      visible={contextMenuVisible} 
+      bind:visible={contextMenuVisible} 
       x={contextMenuPosition.x}
       y={contextMenuPosition.y}
       on:action={async (e) => {
         const action = e.detail;
-        const currentPath = $viewerState.currentFile || filePath;
+        const currentPath = $viewerState.imageInfo?.path || filePath;
 
-        if (action === 'copy' && currentPath) {
+        if (action === 'zoomIn') {
+          viewerActions.setZoomAndFitMode($viewerState.zoom * 1.1, 'custom');
+        } else if (action === 'zoomOut') {
+          viewerActions.setZoomAndFitMode($viewerState.zoom / 1.1, 'custom');
+        } else if (action === 'rotateRight') {
+          viewerActions.rotate(90);
+        } else if (action === 'rotateLeft') {
+          viewerActions.rotate(-90);
+        } else if (action === 'flipH') {
+          viewerActions.toggleFlipH();
+        } else if (action === 'flipV') {
+          viewerActions.toggleFlipV();
+        } else if (action === 'fitWindow') {
+          viewerActions.setFitMode('fit');
+        } else if (action === 'actualSize') {
+          viewerActions.setFitMode('actual');
+        } else if (action === 'showInfo') {
+          viewerActions.toggleInfoPanel();
+        } else if (action === 'copy' && currentPath) {
           try {
             await window.electronAPI.copyImageToClipboard(currentPath);
           } catch (err) {
             console.error('复制图片失败:', err);
+          }
+        } else if (action === 'openInExplorer' && currentPath) {
+          try {
+            await window.electronAPI.openInExplorer(currentPath);
+          } catch (err) {
+            console.error('在资源管理器中打开失败:', err);
           }
         } else if (action === 'setWallpaper' && currentPath) {
           try {
@@ -281,7 +444,6 @@
             console.error('设置壁纸失败:', err);
           }
         }
-        // 其他 action（zoomIn/zoomOut/rotateRight 等）由快捷键系统处理
       }}
     />
   </div>
@@ -290,16 +452,24 @@
   {#if $viewerState.showStatusBar && !$viewerState.isFullscreen}
     <StatusBar />
   {/if}
+  
+  <!-- 沉浸模式控制栏 -->
+  {#if $immersiveMode}
+    <ImmersiveControls bind:this={immersiveControls} />
+  {/if}
 </div>
 
 <style>
   .app {
     width: 100vw;
     height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
     display: flex;
     flex-direction: column;
     background: #1a1a1a;
-    overflow: hidden;
+    overflow: hidden !important;
+    -webkit-app-region: no-drag;
   }
   
   .app.fullscreen {
@@ -313,6 +483,7 @@
     flex: 1;
     position: relative;
     overflow: hidden;
+    -webkit-app-region: no-drag;
   }
   
   .loading,

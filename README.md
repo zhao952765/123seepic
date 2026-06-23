@@ -46,7 +46,7 @@
 123看图/
 ├── electron/                    # Electron 主进程
 │   ├── main.js                  # 入口：窗口管理、托盘、IPC 注册、单实例锁
-│   ├── preload.js               # 安全桥接：contextBridge 暴露 window.electronAPI
+│   ├── preload.cjs              # 安全桥接：contextBridge 暴露 window.electronAPI
 │   ├── splash.html              # 启动闪屏
 │   └── handlers/                # 后端处理器
 │       ├── file.js              # 文件信息、目录列表、缩略图生成、尺寸读取
@@ -202,8 +202,9 @@ window.electronAPI.onFileOpenRequest(callback: (filePath: string) => void): () =
 ### 缩略图生成
 
 - 同样使用 Lanczos3 插值，JPEG 质量 85
-- SVG 文件跳过 Sharp 处理，返回占位缩略图
+- SVG 文件解析 viewBox 属性获取尺寸，使用基于宽高比的占位缩略图
 - 缩略图 base64 编码直接返回，侧边栏即时渲染
+- 罕见格式自动降级为占位图标，不阻塞浏览流程
 
 ### 安全策略
 
@@ -229,9 +230,48 @@ window.electronAPI.onFileOpenRequest(callback: (filePath: string) => void): () =
 | TIFF | `.tiff` `.tif` | 全功能支持 |
 | GIF | `.gif` | 全功能支持 |
 | ICO | `.ico` | 全功能支持 |
-| SVG | `.svg` | 查看支持（Sharp 不处理元数据） |
+| SVG | `.svg` | 查看支持（仅解析 viewBox 尺寸，不渲染矢量内容） |
 | HEIC | `.heic` `.heif` | 全功能支持 |
 | PDF | `.pdf` | pdfjs-dist 渲染 |
+
+---
+
+## 系统要求
+
+| 项目 | 最低要求 |
+| :--- | :--- |
+| 操作系统 | Windows 10 21H2 或更高版本 / Windows 11 22H2 或更高版本 |
+| 架构 | 64位 (x64) 处理器 |
+| 内存 | 至少 512MB RAM |
+| 磁盘空间 | 至少 50MB 可用空间 |
+
+---
+
+## 性能指标
+
+| 指标 | 优化目标 | 说明 |
+| :--- | :--- | :--- |
+| 冷启动时间 | ≤ 800ms | V8 编译缓存 + 延迟加载非核心模块 |
+| 空闲内存 | ≤ 45 MB | 精简 preload 脚本 + GPU 加速渲染 |
+| 大图加载内存 | ≤ 90 MB | LRU 缓存池（≤ 3 张）+ sharp 并发限制 |
+| 缩放/平移帧率 | ≥ 60 FPS | rAF 节流渲染 + 双缓冲机制 |
+| 长时间运行 | 内存增长 < 5MB/30min | onDestroy 资源全释放 + 定时器清理 |
+
+### 优化技术栈
+
+- **启动加速**：`v8-compile-cache` 缓存 V8 编译结果 + 延迟加载 `electron-store`、`wallpaper`
+- **内存控制**：`ImageCachePool` LRU 淘汰（≤ 3 张） + `ImageBitmap.close()` 及时释放 GPU 纹理
+- **CPU 优化**：`sharp.concurrency(4)` 限制并发 + `UV_THREADPOOL_SIZE` 动态适配 CPU 核心
+- **渲染性能**：`requestAnimationFrame` 节流 + `will-change` GPU 硬件加速 + `OffscreenCanvas` 离屏渲染
+- **内存监控**：开发模式每 30 秒输出 RSS / Heap / External 内存快照
+
+---
+
+## 已知限制
+
+- **管理员权限拖放**：以管理员权限运行应用时，Windows UIPI 机制将阻止从资源管理器拖放文件。请以普通用户权限运行，或安装后自动以 `asInvoker` 权限启动。
+- **加密 PDF**：加密 PDF 文件打开时需用户输入密码，暂不支持无密码自动解密。
+- **罕见格式**：部分罕见图片格式（如 RAW 相机原始文件）可能无法生成缩略图，将显示占位图标。
 
 ---
 

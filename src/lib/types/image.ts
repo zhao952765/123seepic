@@ -34,7 +34,7 @@ export interface ViewerState {
   rotation: number;
   flipH: boolean;
   flipV: boolean;
-  fitMode: 'fit' | 'fill' | 'actual' | 'width';
+  fitMode: 'fit' | 'fill' | 'actual' | 'width' | 'custom';
   
   // PDF 查看器状态
   pdfPage: number;

@@ -6,6 +6,11 @@
   export let y = 0;
   
   const dispatch = createEventDispatcher();
+  const MENU_WIDTH = 240;
+  const MENU_HEIGHT = 360;
+  
+  let adjustedX = 0;
+  let adjustedY = 0;
   
   function handleAction(action: string) {
     dispatch('action', action);
@@ -19,26 +24,28 @@
     }
   }
   
-  // 仅在客户端绑定 document 事件，避免 SSR 中访问 document 报错
+  function recalcPosition() {
+    adjustedX = x;
+    adjustedY = y;
+    if (adjustedX + MENU_WIDTH > window.innerWidth) {
+      adjustedX = window.innerWidth - MENU_WIDTH - 10;
+    }
+    if (adjustedY + MENU_HEIGHT > window.innerHeight) {
+      adjustedY = window.innerHeight - MENU_HEIGHT - 10;
+    }
+    adjustedX = Math.max(0, adjustedX);
+    adjustedY = Math.max(0, adjustedY);
+  }
+  
   onMount(() => {
     return () => {
       document.removeEventListener('click', handleClickOutside);
     };
   });
-
+  
   $: if (typeof document !== 'undefined') {
     if (visible) {
-      // 确保菜单不超出屏幕
-      const menuWidth = 240;
-      const menuHeight = 400;
-      
-      if (x + menuWidth > window.innerWidth) {
-        x = window.innerWidth - menuWidth - 10;
-      }
-      if (y + menuHeight > window.innerHeight) {
-        y = window.innerHeight - menuHeight - 10;
-      }
-      
+      recalcPosition();
       document.addEventListener('click', handleClickOutside);
     } else {
       document.removeEventListener('click', handleClickOutside);
@@ -49,7 +56,7 @@
 {#if visible}
   <div 
     class="context-menu" 
-    style="left: {x}px; top: {y}px;"
+    style="left: {adjustedX}px; top: {adjustedY}px;"
     on:click|stopPropagation
     role="menu"
   >
@@ -115,6 +122,11 @@
       <span class="menu-shortcut">Ctrl + C</span>
     </div>
     
+    <div class="menu-item" on:click={() => handleAction('openInExplorer')} role="menuitem">
+      <span class="menu-icon">📁</span>
+      <span class="menu-label">在资源管理器中打开</span>
+    </div>
+    
     <div class="menu-item" on:click={() => handleAction('setWallpaper')} role="menuitem">
       <span class="menu-icon">🖼️</span>
       <span class="menu-label">设为壁纸</span>
@@ -134,9 +146,7 @@
   .context-menu {
     position: fixed;
     min-width: 240px;
-    background: rgba(44, 44, 44, 0.85);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: rgba(30, 30, 30, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -150,11 +160,11 @@
   @keyframes menuFadeIn {
     from {
       opacity: 0;
-      transform: scale(0.95) translateY(-10px);
+      transform: translateY(-6px);
     }
     to {
       opacity: 1;
-      transform: scale(1) translateY(0);
+      transform: translateY(0);
     }
   }
   

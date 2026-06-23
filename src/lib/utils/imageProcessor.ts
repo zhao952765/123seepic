@@ -3,14 +3,9 @@ import type { ImageInfo, ThumbnailData } from '../types/image';
 /**
  * 读取文件信息（包括图片元数据）
  */
-export async function loadFileInfo(path: string): Promise<ImageInfo> {
-  try {
-    const info = await window.electronAPI.readFileInfo(path);
-    return info;
-  } catch (error) {
-    console.error('加载文件信息失败:', error);
-    throw error;
-  }
+export async function loadFileInfo(filePath: string): Promise<ImageInfo> {
+  const info = await window.electronAPI.readFileInfo(filePath);
+  return info;
 }
 
 /**
@@ -112,10 +107,8 @@ export class PdfRenderEngine {
    */
   async loadDocument(pdfjsLib: any, filePath: string): Promise<void> {
     try {
-      console.log(`⏳ 加载PDF: ${filePath}`);
       const loadingTask = pdfjsLib.getDocument(filePath);
       this.pdfDoc = await loadingTask.promise;
-      console.log(`✅ PDF加载完成: ${this.pdfDoc.numPages}页`);
     } catch (error) {
       console.error('PDF加载失败:', error);
       throw error;
@@ -146,14 +139,12 @@ export class PdfRenderEngine {
     // ✅ 检查缓存
     const cached = this.pageCache.get(pageNumber);
     if (cached && cached.viewport.scale === scale) {
-      console.log(`🚀 PDF缓存命中: 第${pageNumber}页`);
       this.copyCachedToCanvas(cached.canvas, canvas);
       return;
     }
     
     // ✅ 检查是否已在渲染队列中
     if (this.renderQueue.has(pageNumber)) {
-      console.log(`⏳ 等待渲染完成: 第${pageNumber}页`);
       await this.renderQueue.get(pageNumber);
       const recached = this.pageCache.get(pageNumber);
       if (recached) {
@@ -181,8 +172,6 @@ export class PdfRenderEngine {
     scale: number,
     targetCanvas: HTMLCanvasElement
   ): Promise<void> {
-    console.log(`⏳ 开始渲染: 第${pageNumber}页 @ ${scale.toFixed(2)}x`);
-    
     try {
       const page = await this.pdfDoc.getPage(pageNumber);
       const viewport = page.getViewport({ scale });
@@ -216,7 +205,8 @@ export class PdfRenderEngine {
       // ✅ 复制到目标Canvas
       this.copyCachedToCanvas(offscreenCanvas, targetCanvas);
       
-      console.log(`✅ 渲染完成: 第${pageNumber}页`);
+      // ✅ 复制到目标Canvas
+      this.copyCachedToCanvas(offscreenCanvas, targetCanvas);
       
       // ✅ 清理page对象
       page.cleanup();
@@ -244,7 +234,6 @@ export class PdfRenderEngine {
         oldest.canvas.width = 1;
         oldest.canvas.height = 1;
         this.pageCache.delete(oldestKey);
-        console.log(`🗑️ 清理PDF缓存: 第${oldestKey}页`);
       }
     }
     
@@ -254,8 +243,6 @@ export class PdfRenderEngine {
       viewport,
       timestamp: Date.now(),
     });
-    
-    console.log(`💾 PDF缓存: 第${pageNumber}页 (当前缓存数: ${this.pageCache.size})`);
   }
   
   /**
@@ -335,7 +322,6 @@ export class PdfRenderEngine {
       cache.canvas.height = 1;
     }
     this.pageCache.clear();
-    console.log('🗑️ 清空PDF缓存');
   }
   
   /**
@@ -347,7 +333,6 @@ export class PdfRenderEngine {
     if (this.pdfDoc) {
       await this.pdfDoc.destroy();
       this.pdfDoc = null;
-      console.log('🗑️ PDF文档已销毁');
     }
     
     this.renderQueue.clear();
@@ -391,11 +376,9 @@ export class ImageCachePool {
       this.accessOrder = this.accessOrder.filter(p => p !== path);
       this.accessOrder.push(path);
       
-      console.log(`✅ 缓存命中: ${path}`);
       return bitmap;
     }
     
-    console.log(`❌ 缓存未命中: ${path}`);
     return null;
   }
   
@@ -418,15 +401,12 @@ export class ImageCachePool {
       if (oldBitmap) {
         oldBitmap.close(); // ✅ 立即释放内存
         this.cache.delete(oldestPath);
-        console.log(`🗑️ 清理缓存: ${oldestPath}`);
       }
     }
     
     // 添加新缓存
     this.cache.set(path, bitmap);
     this.accessOrder.push(path);
-    
-    console.log(`💾 缓存存入: ${path} (当前缓存数: ${this.cache.size})`);
   }
   
   /**
@@ -440,7 +420,6 @@ export class ImageCachePool {
     }
     
     try {
-      console.log(`⏳ 预加载中: ${path}`);
       const bitmap = await loadImageAsBitmap(path);
       this.set(path, bitmap);
       return bitmap;
@@ -468,7 +447,6 @@ export class ImageCachePool {
       bitmap.close(); // ✅ 立即释放内存
       this.cache.delete(path);
       this.accessOrder = this.accessOrder.filter(p => p !== path);
-      console.log(`🗑️ 手动清理: ${path}`);
     }
   }
   
@@ -481,7 +459,6 @@ export class ImageCachePool {
     }
     this.cache.clear();
     this.accessOrder = [];
-    console.log('🗑️ 清空所有缓存');
   }
   
   /**
@@ -660,12 +637,11 @@ export class TwoStageRenderer {
   }
   
   /**
-   * 开始快速缩放（使用低质量渲染）
+   * 开始快速缩放（使用中等质量渲染，1/2 分辨率）
    */
   beginFastZoom() {
     this.useLowQuality = true;
     
-    // 创建低分辨率离屏Canvas（1/4分辨率）
     if (!this.lowQualityCanvas) {
       this.lowQualityCanvas = document.createElement('canvas');
       this.lowQualityCtx = this.lowQualityCanvas.getContext('2d', {
@@ -677,8 +653,9 @@ export class TwoStageRenderer {
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     
-    this.lowQualityCanvas.width = Math.floor(width / 4);
-    this.lowQualityCanvas.height = Math.floor(height / 4);
+    // 1/2 分辨率（比 1/4 清晰，缩放时仍保持可读性）
+    this.lowQualityCanvas.width = Math.floor(width / 2);
+    this.lowQualityCanvas.height = Math.floor(height / 2);
   }
   
   /**
@@ -696,19 +673,18 @@ export class TwoStageRenderer {
    */
   render(renderCallback: () => void) {
     if (this.useLowQuality && this.lowQualityCanvas && this.lowQualityCtx) {
-      // 低质量渲染到离屏Canvas
+      // 1/2 分辨率渲染到离屏Canvas
       this.lowQualityCtx.save();
       this.lowQualityCtx.fillStyle = '#1a1a1a';
       this.lowQualityCtx.fillRect(0, 0, this.lowQualityCanvas.width, this.lowQualityCanvas.height);
       
-      // 缩小变换矩阵
-      this.lowQualityCtx.scale(0.25, 0.25);
+      this.lowQualityCtx.scale(0.5, 0.5);
       renderCallback();
       this.lowQualityCtx.restore();
       
-      // 快速绘制到主Canvas（浏览器会自动插值）
+      // 放大到主Canvas（浏览器自动插值）
       this.ctx.imageSmoothingEnabled = true;
-      this.ctx.imageSmoothingQuality = 'low';
+      this.ctx.imageSmoothingQuality = 'medium';
       this.ctx.drawImage(
         this.lowQualityCanvas,
         0, 0,
@@ -848,34 +824,31 @@ class PerformanceMonitor {
    */
   printReport() {
     if (!this.metrics) {
-      console.warn('暂无性能数据');
       return;
     }
 
     console.group('📊 渲染性能报告');
-    console.log('帧率:', `${this.metrics.fps} FPS`);
-    console.log('渲染耗时:', `${this.metrics.renderTime.toFixed(2)} ms`);
-    console.log('内存占用:', `${this.metrics.memoryUsage.toFixed(2)} MB`);
-    console.log('Canvas尺寸:', `${this.metrics.canvasSize.width}x${this.metrics.canvasSize.height}`);
-    console.log('物理像素:', `${this.metrics.canvasSize.physicalWidth}x${this.metrics.canvasSize.physicalHeight}`);
-    console.log('设备像素比:', this.metrics.devicePixelRatio);
+    console.warn('帧率:', `${this.metrics.fps} FPS`);
+    console.warn('渲染耗时:', `${this.metrics.renderTime.toFixed(2)} ms`);
+    console.warn('内存占用:', `${this.metrics.memoryUsage.toFixed(2)} MB`);
+    console.warn('Canvas尺寸:', `${this.metrics.canvasSize.width}x${this.metrics.canvasSize.height}`);
+    console.warn('物理像素:', `${this.metrics.canvasSize.physicalWidth}x${this.metrics.canvasSize.physicalHeight}`);
+    console.warn('设备像素比:', this.metrics.devicePixelRatio);
     
     if (this.metrics.imageBitmapSize) {
-      console.log('图片尺寸:', `${this.metrics.imageBitmapSize.width}x${this.metrics.imageBitmapSize.height}`);
+      console.warn('图片尺寸:', `${this.metrics.imageBitmapSize.width}x${this.metrics.imageBitmapSize.height}`);
       
-      // 计算缩放比例
       const zoomX = this.metrics.canvasSize.physicalWidth / this.metrics.imageBitmapSize.width;
       const zoomY = this.metrics.canvasSize.physicalHeight / this.metrics.imageBitmapSize.height;
-      console.log('缩放比例:', `${(zoomX * 100).toFixed(1)}% x ${(zoomY * 100).toFixed(1)}%`);
+      console.warn('缩放比例:', `${(zoomX * 100).toFixed(1)}% x ${(zoomY * 100).toFixed(1)}%`);
     }
     
-    // 性能评估
-    if (this.metrics.fps >= 55) {
-      console.log('✅ 性能优秀');
-    } else if (this.metrics.fps >= 30) {
-      console.log('⚠️ 性能良好');
+    if (this.metrics.renderTime < 5) {
+      console.warn('✅ 渲染性能优秀');
+    } else if (this.metrics.renderTime < 16) {
+      console.warn('⚠️ 渲染性能良好（接近60fps阈值）');
     } else {
-      console.log('❌ 性能不足，需要优化');
+      console.warn('❌ 渲染耗时过长，建议优化');
     }
     
     console.groupEnd();

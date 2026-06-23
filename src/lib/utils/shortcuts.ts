@@ -1,4 +1,4 @@
-import { viewerActions, viewerState } from '../stores/viewer';
+import { viewerActions, viewerState, toggleImmersiveMode } from '../stores/viewer';
 import { get } from 'svelte/store';
 
 /**
@@ -30,7 +30,7 @@ export const shortcuts: ShortcutConfig[] = [
   // 缩放
   { key: '=', ctrl: true, action: () => zoomIn(), description: '放大' },
   { key: '-', ctrl: true, action: () => zoomOut(), description: '缩小' },
-  { key: '0', ctrl: true, action: () => resetZoom(), description: '实际大小' },
+  { key: '0', ctrl: true, action: () => resetZoomToFit(), description: '适应窗口' },
   
   // 旋转
   { key: 'r', ctrl: true, action: () => rotateRight(), description: '向右旋转' },
@@ -44,8 +44,9 @@ export const shortcuts: ShortcutConfig[] = [
   { key: 'f', ctrl: true, action: () => setFitMode('fit'), description: '适应窗口' },
   { key: '1', ctrl: true, action: () => setFitMode('actual'), description: '1:1 实际尺寸' },
   
-  // 全屏
-  { key: 'F11', action: () => toggleFullscreen(), description: '全屏' },
+  // 全屏 / 沉浸模式
+  { key: 'F11', action: () => toggleImmersiveMode(), description: '沉浸模式' },
+  { key: 'f', ctrl: true, shift: true, action: () => toggleImmersiveMode(), description: '沉浸模式' },
   { key: 'Escape', action: () => exitFullscreen(), description: '退出全屏' },
   
   // PDF 导航
@@ -70,16 +71,24 @@ function openFileDialog() {
 // 快捷操作函数
 function zoomIn() {
   const state = get(viewerState);
-  viewerActions.setZoom(state.zoom + 0.2);
+  let newZoom = state.zoom * 1.05;
+  if (Math.abs(newZoom - 1) < 0.03 && state.zoom !== 1) newZoom = 1;
+  viewerActions.setZoomAndFitMode(newZoom, 'custom');
 }
 
 function zoomOut() {
   const state = get(viewerState);
-  viewerActions.setZoom(state.zoom - 0.2);
+  let newZoom = state.zoom / 1.05;
+  if (Math.abs(newZoom - 1) < 0.03 && state.zoom !== 1) newZoom = 1;
+  viewerActions.setZoomAndFitMode(newZoom, 'custom');
+}
+
+function resetZoomToFit() {
+  viewerActions.setFitMode('fit');
 }
 
 function resetZoom() {
-  viewerActions.setZoom(1);
+  viewerActions.setZoomAndFitMode(1, 'actual');
 }
 
 function rotateRight() {
@@ -98,7 +107,7 @@ function flipVertical() {
   viewerActions.toggleFlipV();
 }
 
-function setFitMode(mode: 'fit' | 'fill' | 'actual' | 'width') {
+function setFitMode(mode: 'fit' | 'fill' | 'actual' | 'width' | 'custom') {
   viewerActions.setFitMode(mode);
 }
 
@@ -149,13 +158,19 @@ function toggleSidebar() {
 }
 
 /**
- * 检查按键组合是否匹配快捷键
+ * 检查按键组合是否匹配快捷键（精确匹配：修饰符数量必须一致）
  */
 export function matchesShortcut(event: KeyboardEvent, shortcut: ShortcutConfig): boolean {
+  // 必须的修饰符检查
   if (shortcut.ctrl && !event.ctrlKey) return false;
   if (shortcut.shift && !event.shiftKey) return false;
   if (shortcut.alt && !event.altKey) return false;
-  
+
+  // 精确匹配：额外的修饰符存在时不匹配（避免 Ctrl+Shift+I 匹配到 ctrl+i）
+  if (!shortcut.ctrl && event.ctrlKey) return false;
+  if (!shortcut.shift && event.shiftKey) return false;
+  if (!shortcut.alt && event.altKey) return false;
+
   return event.key.toLowerCase() === shortcut.key.toLowerCase();
 }
 
@@ -169,7 +184,15 @@ export function registerKeyboardShortcuts() {
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
       return;
     }
-    
+
+    // 白名单：DevTools 快捷键始终放行，不拦截
+    if ((event.ctrlKey && event.shiftKey && event.key === 'I') ||
+        (event.ctrlKey && event.shiftKey && event.key === 'J') ||
+        (event.ctrlKey && event.shiftKey && event.key === 'C') ||
+        event.key === 'F12') {
+      return; // 让 Electron 处理
+    }
+
     for (const shortcut of shortcuts) {
       if (matchesShortcut(event, shortcut)) {
         event.preventDefault();

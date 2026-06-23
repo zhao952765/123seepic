@@ -13,10 +13,24 @@ files:
   - dist/**/*
   - 123.ico
   - package.json
+  - node_modules/**/*
+  - "!node_modules/.cache/**"
+
+# 原生模块重编译
+npmRebuild: true
+
+# ASAR 配置：原生模块必须从 asar 中解包
+asar: true
+asarUnpack:
+  - "node_modules/sharp/**"
+  - "node_modules/@img/**"
+  - "node_modules/@napi-rs/**"
+  - "node_modules/wallpaper/**"
 
 # 应用图标
 win:
   icon: 123.ico
+  requestedExecutionLevel: asInvoker
   target:
     - target: nsis
       arch:
@@ -87,16 +101,11 @@ nsis:
   uninstallerIcon: 123.ico
   installerHeaderIcon: 123.ico
   artifactName: 123看图-${version}-Setup.${ext}
+  perMachine: false
 
 # MSI 安装程序配置
 msi:
   artifactName: 123看图-${version}.${ext}
   shortcutName: 123看图
   createDesktopShortcut: true
-
-# ASAR 配置（sharp/wallpaper 原生模块必须解包）
-asar:
-  smartUnpack: true
-asarUnpack:
-  - "node_modules/sharp/**"
-  - "node_modules/wallpaper/**"
+  perMachine: false

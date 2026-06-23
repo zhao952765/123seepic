@@ -2,6 +2,9 @@ import sharp from 'sharp';
 
 const MAX_OUTPUT = 4096;  // 输出尺寸上限，防止异常大尺寸请求导致内存溢出
 
+// 限制 sharp 并发处理数，防止瞬间大量瓦片请求导致内存峰值
+sharp.concurrency(4);
+
 /**
  * 提取图片瓦片（高质量 Lanczos 缩放）
  * @param {string} filePath      - 原图路径

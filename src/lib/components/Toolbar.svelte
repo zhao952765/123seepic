@@ -5,6 +5,8 @@
 
   const dispatch = createEventDispatcher();
 
+  $: zoomPercent = Math.round($viewerState.zoom * 100);
+
   function zoomIn() {
     const state = get(viewerState);
     viewerActions.setZoom(state.zoom + 0.2);
@@ -61,7 +63,7 @@
   <!-- 缩放控制 -->
   <div class="toolbar-group">
     <button on:click={zoomOut} title="缩小 (-)">−</button>
-    <span class="zoom-level">{Math.round($viewerState.zoom * 100)}%</span>
+    <span class="zoom-level">{zoomPercent}%</span>
     <button on:click={zoomIn} title="放大 (+)">+</button>
     <button on:click={resetZoom} title="实际大小 (Ctrl+0)">1:1</button>
   </div>

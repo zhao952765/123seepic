@@ -30,11 +30,20 @@
     } else {
       await window.electronAPI.maximize();
     }
-    isMaximized = !isMaximized;
+    // 不手动翻转 isMaximized，由 onMaximizedChange 回调统一更新，避免竞态
   }
 
   async function close() {
-    await window.electronAPI.close();
+    try {
+      if (window.electronAPI?.close) {
+        await window.electronAPI.close();
+      } else {
+        console.warn('[TitleBar] electronAPI.close 不可用，回退到 window.close()');
+        window.close();
+      }
+    } catch (err) {
+      console.error('[TitleBar] 关闭失败:', err);
+    }
   }
 </script>
 

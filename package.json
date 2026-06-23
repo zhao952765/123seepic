@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "description": "极致轻量、高性能的图片和PDF查看器",
+  "author": "123 Viewer Team",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite dev",
@@ -29,7 +30,6 @@
     "concurrently": "^8.2.2",
     "electron": "^33.4.11",
     "electron-builder": "^25.1.8",
-    "electron-store": "^8.2.0",
     "svelte": "^4.2.20",
     "svelte-check": "^3.8.6",
     "terser": "^5.46.2",
@@ -38,6 +38,7 @@
     "wait-on": "^7.2.0"
   },
   "dependencies": {
+    "electron-store": "^8.2.0",
     "pdfjs-dist": "^4.10.38",
     "sharp": "^0.33.0",
     "wallpaper": "^7.0.0"

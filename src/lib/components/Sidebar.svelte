@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { viewerState } from '../stores/viewer';
   import type { DirectoryEntry, ThumbnailData } from '../types/image';
 
@@ -7,6 +8,7 @@
   let files: DirectoryEntry[] = [];
   let thumbnails = new Map<string, string>(); // path -> base64
   let isLoading = false;
+  let lastDir: string = '';
 
   $: if (currentPath && $viewerState.showThumbnails) {
     loadDirectory();
@@ -14,20 +16,30 @@
 
   async function loadDirectory() {
     if (!currentPath) return;
+
+    const parentDir = currentPath.substring(0, currentPath.lastIndexOf('\\'));
+    if (!parentDir) return;
+
+    // 目录切换时清空旧数据
+    if (parentDir !== lastDir) {
+      lastDir = parentDir;
+      files = [];
+      thumbnails = new Map<string, string>();
+      // 清空所有进行中的防抖定时器
+      for (const timer of thumbnailTimers.values()) {
+        clearTimeout(timer);
+      }
+      thumbnailTimers.clear();
+    }
     
     isLoading = true;
     try {
-      // 获取父目录
-      const parentDir = currentPath.substring(0, currentPath.lastIndexOf('\\'));
+      files = await window.electronAPI.listDirectory(parentDir);
       
-      if (parentDir) {
-        files = await window.electronAPI.listDirectory(parentDir);
-        
-        // 生成缩略图（仅图片文件）
-        for (const file of files) {
-          if (!file.isDir && isImageFile(file.name)) {
-            generateThumbnail(file.path);
-          }
+      // 生成缩略图（仅图片文件，排除 PDF/SVG 等无法生成缩略图的格式）
+      for (const file of files) {
+        if (!file.isDir && isImageFile(file.name)) {
+          generateThumbnailDebounced(file.path);
         }
       }
     } catch (error) {
@@ -37,11 +49,27 @@
     }
   }
 
+  // 缩略图生成防抖：每文件独立计时器，批量加载时合并请求，减少 CPU 峰值
+  let thumbnailTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  async function generateThumbnailDebounced(filePath: string) {
+    const existing = thumbnailTimers.get(filePath);
+    if (existing) clearTimeout(existing);
+    thumbnailTimers.set(filePath, setTimeout(() => {
+      thumbnailTimers.delete(filePath);
+      generateThumbnail(filePath);
+    }, 100));
+  }
+
   async function generateThumbnail(filePath: string) {
     try {
       const thumbnail = await window.electronAPI.generateThumbnail(filePath, 150);
       
-      thumbnails.set(filePath, `data:image/png;base64,${thumbnail.data}`);
+      // 仅当有有效 base64 数据时才设置（SVG 等返回空 data）
+      if (thumbnail.data) {
+        thumbnails.set(filePath, `data:image/png;base64,${thumbnail.data}`);
+      }
+      // 无 data 时不设置，模板中会显示占位图标
     } catch (error) {
       console.error('生成缩略图失败:', error);
     }
@@ -49,7 +77,7 @@
 
   function isImageFile(filename: string): boolean {
     const ext = filename.split('.').pop()?.toLowerCase();
-    const imageExts = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'tiff', 'gif', 'ico'];
+    const imageExts = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'tiff', 'gif', 'ico', 'svg'];
     return ext ? imageExts.includes(ext) : false;
   }
 
@@ -57,6 +85,13 @@
     // 触发文件选择事件
     window.dispatchEvent(new CustomEvent('file-select', { detail: path }));
   }
+
+  onDestroy(() => {
+    for (const timer of thumbnailTimers.values()) {
+      clearTimeout(timer);
+    }
+    thumbnailTimers.clear();
+  });
 </script>
 
 {#if $viewerState.showThumbnails}
@@ -163,7 +198,7 @@
 
   .sidebar-content {
     flex: 1;
-    overflow-y: auto;
+    overflow: hidden;
     padding: 8px;
   }
 

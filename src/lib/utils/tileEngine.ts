@@ -145,8 +145,6 @@ export class TileEngine {
     this.fetchTileData = fetchCallback;
     this._isActive = true;
     
-    console.log(`🧩 瓦片引擎初始化: ${width}x${height}, 瓦片数=${this.totalTilesX}x${this.totalTilesY}, 瓦片大小=${this.tileSize}px`);
-    
     // 启动缓存清理循环（每5秒检查一次）
     this.startCacheCleanup();
   }
@@ -574,8 +572,7 @@ export class TileEngine {
     this.ctx = null;
     this.fetchTileData = null;
     
-    console.log('🧩 瓦片引擎已销毁');
-  }
+    }
   
   /**
    * 获取当前是否激活
