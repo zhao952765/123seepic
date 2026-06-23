@@ -9,14 +9,26 @@ export async function loadFileInfo(filePath: string): Promise<ImageInfo> {
 }
 
 /**
+ * Electron IPC 将 Node.js Buffer 序列化为 {type:'Buffer', data:[...]}
+ * 此函数将其还原为 ArrayBuffer
+ */
+function toArrayBuffer(data: any): ArrayBuffer {
+  if (data instanceof ArrayBuffer) return data;
+  if (data instanceof Uint8Array) return data.buffer;
+  if (data && data.type === 'Buffer' && Array.isArray(data.data)) {
+    return new Uint8Array(data.data).buffer;
+  }
+  return data;
+}
+
+/**
  * ✅ 高性能加载图片为ArrayBuffer（替代base64方案）
  * 直接通过file://协议读取二进制数据，避免base64编码膨胀
  */
 export async function loadImageArrayBuffer(path: string): Promise<ArrayBuffer> {
   try {
-    // ✅ 通过 Electron IPC 读取本地文件 Buffer
-    const buffer = await window.electronAPI.readFileBuffer(path);
-    return buffer;
+    const raw = await window.electronAPI.readFileBuffer(path);
+    return toArrayBuffer(raw);
   } catch (error) {
     console.error('加载图片失败:', error);
     throw error;
@@ -909,7 +921,8 @@ export function measureRender<T>(fn: () => T): T {
  */
 export async function loadImageBase64(path: string): Promise<string> {
   try {
-    const buffer = await window.electronAPI.readFileBuffer(path);
+    const raw = await window.electronAPI.readFileBuffer(path);
+    const buffer = toArrayBuffer(raw);
     const blob = new Blob([buffer]);
     return URL.createObjectURL(blob);
   } catch (error) {

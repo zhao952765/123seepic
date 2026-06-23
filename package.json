@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "dev:electron": "concurrently -k \"npm run dev\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "dev:electron": "concurrently -k \"npm run dev\" \"wait-on tcp:5173 && electron .\"",
     "build:electron": "npm run build && electron-builder"
   },
   "scriptsComments": {
@@ -41,6 +41,7 @@
     "electron-store": "^8.2.0",
     "pdfjs-dist": "^4.10.38",
     "sharp": "^0.33.0",
-    "wallpaper": "^7.0.0"
+    "wallpaper": "^7.0.0",
+    "winreg": "^1.2.5"
   }
 }

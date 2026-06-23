@@ -63,6 +63,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('window-maximized-change', listener);
   },
 
+  startWindowDrag: (screenX, screenY) => ipcRenderer.send('window-drag-start', screenX, screenY),
+  moveWindowDrag: (screenX, screenY) => ipcRenderer.send('window-drag-move', screenX, screenY),
+  endWindowDrag: () => ipcRenderer.send('window-drag-end'),
+
+  registerFileAssociations: (extensions) => ipcRenderer.invoke('register-file-associations', extensions),
+  unregisterFileAssociations: (extensions) => ipcRenderer.invoke('unregister-file-associations', extensions),
+
   onFileOpenRequest: (callback) => {
     const listener = (event, filePath) => callback(filePath);
     ipcRenderer.on('file-open-request', listener);

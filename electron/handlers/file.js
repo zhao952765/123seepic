@@ -235,6 +235,19 @@ export async function generateThumbnail(filePath, maxSize = 200) {
 }
 
 /**
+ * 读取文件为 Buffer（返回原始 Buffer，Electron IPC 自动序列化）
+ */
+export async function readFileBuffer(filePath) {
+  try {
+    const buffer = await readFile(filePath);
+    return buffer;
+  } catch (error) {
+    console.error('[readFileBuffer] 错误:', error);
+    throw new Error(`读取文件失败: ${error.message}`);
+  }
+}
+
+/**
  * 获取图片完整尺寸
  */
 export async function getImageDimensions(filePath) {

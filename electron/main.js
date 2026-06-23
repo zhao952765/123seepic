@@ -1,13 +1,14 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, shell, protocol } from 'electron';
 import { fileURLToPath } from 'url';
-import { dirname, join, isAbsolute } from 'path';
+import { dirname, join, extname, isAbsolute } from 'path';
 import { createRequire } from 'module';
 import { execSync } from 'child_process';
 
 const require = createRequire(import.meta.url);
-const { existsSync, readFileSync } = require('fs');
+const fs = require('fs');
 import {
   readFileInfo,
+  readFileBuffer,
   listDirectoryFiles,
   generateThumbnail,
   getImageDimensions
@@ -79,7 +80,7 @@ if (!gotTheLock) {
       // 尝试从命令行参数中提取文件路径
       const filePath = commandLine.find(arg => {
         try {
-          return isAbsolute(arg) && existsSync(arg);
+          return isAbsolute(arg) && fs.existsSync(arg);
         } catch {
           return false;
         }
@@ -104,57 +105,37 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     protocol.handle('app', async (request) => {
-      // 移除 app:// 协议前缀，处理可能的双斜杠或三斜杠
-      let pathname = request.url.replace(/^app:\/\/\/?/, '');
-      // 移除查询参数和哈希
-      pathname = pathname.split('?')[0].split('#')[0];
-      // 如果 pathname 为空或只是 "/"，使用 index.html
-      if (!pathname || pathname === '/') {
-        pathname = 'index.html';
-      }
-      const filePath = join(__dirname, '../dist', pathname);
-      console.log('[app://] 请求:', request.url, '→', pathname, '→', filePath);
-      const mimeTypes = {
-        '.html': 'text/html',
-        '.js': 'application/javascript',
-        '.mjs': 'application/javascript',
-        '.css': 'text/css',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.svg': 'image/svg+xml',
-        '.ico': 'image/x-icon',
-        '.json': 'application/json',
-        '.map': 'application/json',
-      };
-      const ext = (filePath.match(/\.[^.]+$/)?.[0] || '.html').toLowerCase();
-      const contentType = mimeTypes[ext] || 'application/octet-stream';
-      let buffer;
+      const url = new URL(request.url);
+      let pathname = url.pathname.replace(/^\/+/, '') || 'index.html';
+      const filePath = join(__dirname, '..', 'dist', pathname);
+
       try {
-        buffer = readFileSync(filePath);
-      } catch (err) {
-        // SPA 回退：文件不存在时返回 index.html，让 SvelteKit 路由处理
-        console.log('[app://] 文件不存在，回退到 index.html:', pathname);
-        try {
-          buffer = readFileSync(join(__dirname, '../dist', 'index.html'));
-        } catch (err2) {
-          console.error('[app://] index.html 读取失败:', err2.message);
-          return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain' } });
-        }
-        return new Response(new Uint8Array(buffer), {
+        const data = await fs.promises.readFile(filePath);
+        const ext = extname(filePath);
+
+        const mimeType = {
+          '.html': 'text/html',
+          '.js': 'application/javascript',
+          '.css': 'text/css',
+          '.png': 'image/png',
+          '.svg': 'image/svg+xml',
+          '.json': 'application/json',
+          '.ico': 'image/x-icon',
+          '.woff': 'font/woff',
+          '.woff2': 'font/woff2',
+        }[ext] || 'application/octet-stream';
+
+        return new Response(data, {
           status: 200,
           headers: {
-            'Content-Type': 'text/html',
+            'Content-Type': mimeType,
             'Access-Control-Allow-Origin': '*',
           },
         });
+      } catch (err) {
+        console.error('[app://] 文件未找到:', filePath);
+        return new Response('Not Found', { status: 404 });
       }
-      return new Response(new Uint8Array(buffer), {
-        status: 200,
-        headers: {
-          'Content-Type': contentType,
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
     });
     createSplashWindow();
     createWindow();
@@ -445,7 +426,7 @@ function registerIpcHandlers() {
       console.warn('[IPC] open-in-explorer: 路径为空');
       return { success: false, error: '路径为空' };
     }
-    if (!existsSync(filePath)) {
+    if (!fs.existsSync(filePath)) {
       console.warn(`[IPC] open-in-explorer: 文件不存在 ${filePath}`);
       return { success: false, error: '文件不存在' };
     }
@@ -480,7 +461,7 @@ function registerIpcHandlers() {
   // 读取文件原始 Buffer
   ipcMain.handle('read-file-buffer', async (_, filePath) => {
     try {
-      return await readFile(filePath);
+      return await readFileBuffer(filePath);
     } catch (error) {
       console.error('read-file-buffer error:', error);
       throw error;
@@ -512,6 +493,93 @@ function registerIpcHandlers() {
     try { return mainWindow ? mainWindow.isMaximized() : false; } catch (error) { console.error('[IPC] window-is-maximized error:', error); return false; }
   });
 
+  // 空白区域窗口拖拽
+  let windowDragging = false;
+  let dragStartScreen = { x: 0, y: 0 };
+  let windowStartPos = { x: 0, y: 0 };
+
+  ipcMain.on('window-drag-start', (_, screenX, screenY) => {
+    if (!mainWindow || mainWindow.isMaximized()) return;
+    windowDragging = true;
+    dragStartScreen = { x: screenX, y: screenY };
+    const pos = mainWindow.getPosition();
+    windowStartPos = { x: pos[0], y: pos[1] };
+  });
+
+  ipcMain.on('window-drag-move', (_, screenX, screenY) => {
+    if (!windowDragging || !mainWindow) return;
+    const dx = screenX - dragStartScreen.x;
+    const dy = screenY - dragStartScreen.y;
+    mainWindow.setPosition(windowStartPos.x + dx, windowStartPos.y + dy);
+  });
+
+  ipcMain.on('window-drag-end', () => {
+    windowDragging = false;
+  });
+
+  // 文件关联注册
+  ipcMain.handle('register-file-associations', (_, extensions) => {
+    try {
+      const { app } = require('electron');
+      const exePath = app.getPath('exe');
+      const Registry = require('winreg');
+      
+      const promises = extensions.map(async (ext) => {
+        const progId = `123Viewer.${ext}`;
+        try {
+          const extKey = new Registry({
+            hive: Registry.HKCU,
+            key: `\\Software\\Classes\\.${ext}\\OpenWithProgids`
+          });
+          await extKey.set(progId, Registry.REG_SZ, '');
+          
+          const progKey = new Registry({
+            hive: Registry.HKCU,
+            key: `\\Software\\Classes\\${progId}\\shell\\open\\command`
+          });
+          await progKey.set('', Registry.REG_SZ, `"${exePath}" "%1"`);
+
+          const iconKey = new Registry({
+            hive: Registry.HKCU,
+            key: `\\Software\\Classes\\${progId}\\DefaultIcon`
+          });
+          await iconKey.set('', Registry.REG_SZ, `"${exePath}",0`);
+        } catch (err) {
+          console.warn(`[IPC] 注册 .${ext} 关联失败:`, err.message);
+        }
+      });
+      
+      return Promise.all(promises).then(() => true);
+    } catch (err) {
+      console.error('[IPC] register-file-associations error:', err);
+      return false;
+    }
+  });
+
+  ipcMain.handle('unregister-file-associations', (_, extensions) => {
+    try {
+      const Registry = require('winreg');
+      
+      const promises = extensions.map(async (ext) => {
+        const progId = `123Viewer.${ext}`;
+        try {
+          const extKey = new Registry({
+            hive: Registry.HKCU,
+            key: `\\Software\\Classes\\.${ext}\\OpenWithProgids`
+          });
+          await extKey.remove(progId);
+        } catch (err) {
+          // key doesn't exist is fine
+        }
+      });
+      
+      return Promise.all(promises).then(() => true);
+    } catch (err) {
+      console.error('[IPC] unregister-file-associations error:', err);
+      return false;
+    }
+  });
+
   // 设置持久化
   ipcMain.handle('get-settings', () => {
     try {
@@ -536,7 +604,7 @@ function getStartupFilePath() {
   const args = process.argv.slice(1);
   return args.find(arg => {
     try {
-      return isAbsolute(arg) && existsSync(arg);
+      return isAbsolute(arg) && fs.existsSync(arg);
     } catch {
       return false;
     }

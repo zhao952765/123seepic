@@ -28,7 +28,7 @@ const initialState: ViewerState = {
   rotation: 0,
   flipH: false,
   flipV: false,
-  fitMode: 'fit',
+  fitMode: 'auto',
   
   // PDF 查看器状态
   pdfPage: 1,
@@ -89,7 +89,7 @@ export const viewerActions = {
   },
   
   // 缩放 + 同时设置 fitMode（用于手动缩放时切换到 custom）
-  setZoomAndFitMode: (zoom: number, fitMode: 'fit' | 'fill' | 'actual' | 'width' | 'custom') => {
+  setZoomAndFitMode: (zoom: number, fitMode: 'fit' | 'fill' | 'actual' | 'width' | 'custom' | 'auto') => {
     viewerState.update(state => ({
       ...state,
       zoom: Math.max(0.05, Math.min(10, zoom)),
@@ -122,7 +122,7 @@ export const viewerActions = {
   },
   
   // 适应模式
-  setFitMode: (mode: 'fit' | 'fill' | 'actual' | 'width' | 'custom') => {
+  setFitMode: (mode: 'fit' | 'fill' | 'actual' | 'width' | 'custom' | 'auto') => {
     viewerState.update(state => ({
       ...state,
       fitMode: mode,
@@ -161,3 +161,4 @@ export const viewerActions = {
     }));
   },
 };
+export const boundaryBlocked = writable<'first' | 'last' | null>(null);

@@ -73,6 +73,9 @@
   })();
 </script>
 
+<!-- ✅ 沉浸模式顶部透明拖拽条 -->
+<div class="immersive-drag-region"></div>
+
 <div
   class="immersive-controls"
   class:visible
@@ -119,6 +122,38 @@
 </div>
 
 <style>
+  /* ✅ 顶部拖拽区域 */
+  .immersive-drag-region {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 8px;
+    -webkit-app-region: drag;
+    cursor: move;
+    z-index: 1001;
+    background: rgba(255, 255, 255, 0.001);
+    pointer-events: auto;
+  }
+
+  .immersive-drag-region::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .immersive-drag-region:hover::after {
+    opacity: 1;
+  }
+
   .immersive-controls {
     position: fixed;
     bottom: 0;

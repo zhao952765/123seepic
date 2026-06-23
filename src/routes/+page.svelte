@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
-  import { viewerState, viewerActions, immersiveMode, enterImmersiveMode, exitImmersiveMode } from '$lib/stores/viewer';
+  import { viewerState, viewerActions, immersiveMode, enterImmersiveMode, exitImmersiveMode, boundaryBlocked } from '$lib/stores/viewer';
+  import { theme } from '$lib/stores/theme';
+  $: isLight = $theme === 'light';
   import { registerKeyboardShortcuts, setOpenFileDialogHandler } from '$lib/utils/shortcuts';
   import { loadFileInfo, isImageFile, isPdfFile } from '$lib/utils/imageProcessor';
   
@@ -13,11 +15,21 @@
   import Sidebar from '$lib/components/Sidebar.svelte';
   import TitleBar from '$lib/components/TitleBar.svelte';
   import ImmersiveControls from '$lib/components/ImmersiveControls.svelte';
+  import SettingsPanel from '$lib/components/SettingsPanel.svelte';
 
   let filePath = '';
   let isLoading = false;
   let error: string | null = null;
   let cleanupKeyboard: (() => void) | null = null;
+  let toastMessage = '';
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  let settingsVisible = false;
+  
+  function showToast(msg: string) {
+    toastMessage = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastMessage = ''; }, 2000);
+  }
   
   // PDF Viewer 引用
   let pdfViewerComponent: any = null;
@@ -58,9 +70,32 @@
       const idx = imageFiles.indexOf(filePath);
       if (idx === -1) return;
 
+      const isLast = idx >= imageFiles.length - 1;
+      const isFirst = idx <= 0;
+
+      if (direction === 1 && isLast) {
+        if ($boundaryBlocked === 'last') {
+          boundaryBlocked.set(null);
+        } else {
+          showToast('已经是最后一张');
+          boundaryBlocked.set('last');
+          return;
+        }
+      } else if (direction === -1 && isFirst) {
+        if ($boundaryBlocked === 'first') {
+          boundaryBlocked.set(null);
+        } else {
+          showToast('已经是第一张');
+          boundaryBlocked.set('first');
+          return;
+        }
+      } else {
+        boundaryBlocked.set(null);
+      }
+
       const nextIdx = direction === 1
-        ? Math.min(imageFiles.length - 1, idx + 1)
-        : Math.max(0, idx - 1);
+        ? (idx + 1) % imageFiles.length
+        : (idx - 1 + imageFiles.length) % imageFiles.length;
 
       if (nextIdx !== idx) {
         openFile(imageFiles[nextIdx]);
@@ -72,6 +107,14 @@
 
   // 初始化
   onMount(() => {
+    // 初始化主题
+    const stored = localStorage.getItem('theme');
+    if (stored === 'light') {
+      theme.set('light');
+    } else {
+      theme.set('dark');
+    }
+
     // 注册快捷键
     cleanupKeyboard = registerKeyboardShortcuts();
     
@@ -95,6 +138,12 @@
     const handleNavNext = () => navigateTo(1);
     window.addEventListener('nav-prev', handleNavPrev);
     window.addEventListener('nav-next', handleNavNext);
+
+    // Toast 消息
+    const handleToast = (e: Event) => {
+      showToast((e as CustomEvent).detail);
+    };
+    window.addEventListener('toast', handleToast);
 
     // 沉浸模式 — 鼠标移动跟踪
     document.addEventListener('mousemove', onMouseMove);
@@ -125,6 +174,7 @@
       window.removeEventListener('file-select', handleFileSelect);
       window.removeEventListener('nav-prev', handleNavPrev);
       window.removeEventListener('nav-next', handleNavNext);
+      window.removeEventListener('toast', handleToast);
       document.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('dragover', handleDragoverWindow, { capture: true });
       window.removeEventListener('drop', handleDropWindow, { capture: true });
@@ -135,6 +185,7 @@
 
   // 打开文件
   async function openFile(path: string) {
+    boundaryBlocked.set(null);
     isLoading = true;
     error = null;
     
@@ -347,6 +398,7 @@
 <div 
   class="app"
   class:fullscreen={$viewerState.isFullscreen}
+  class:light={isLight}
   on:drop={(e) => {
     handleDrop(e);
   }}
@@ -360,7 +412,7 @@
   
   <!-- 工具栏 -->
   {#if $viewerState.showToolbar && !$viewerState.isFullscreen && !$immersiveMode}
-    <Toolbar on:openFile={handleOpenFileDialog} />
+    <Toolbar on:openFile={handleOpenFileDialog} on:settings={() => { settingsVisible = true; }} />
   {/if}
   
   <!-- 主内容区 -->
@@ -425,6 +477,8 @@
           viewerActions.setFitMode('actual');
         } else if (action === 'showInfo') {
           viewerActions.toggleInfoPanel();
+        } else if (action === 'settings') {
+          settingsVisible = true;
         } else if (action === 'copy' && currentPath) {
           try {
             await window.electronAPI.copyImageToClipboard(currentPath);
@@ -443,10 +497,29 @@
           } catch (err) {
             console.error('设置壁纸失败:', err);
           }
+        } else if (action && typeof action === 'object' && action.type === 'updateFileAssociations') {
+          try {
+            await window.electronAPI.registerFileAssociations(action.formats);
+          } catch (err) {
+            console.error('注册文件关联失败:', err);
+          }
         }
       }}
     />
   </div>
+  
+  <!-- 设置面板 -->
+  <SettingsPanel 
+    bind:visible={settingsVisible} 
+    on:updateFileAssociations={async (e) => {
+      try {
+        await window.electronAPI.registerFileAssociations(e.detail.formats);
+      } catch (err) {
+        console.error('注册文件关联失败:', err);
+      }
+    }}
+    on:close={() => { settingsVisible = false; }}
+  />
   
   <!-- 状态栏 -->
   {#if $viewerState.showStatusBar && !$viewerState.isFullscreen}
@@ -456,6 +529,11 @@
   <!-- 沉浸模式控制栏 -->
   {#if $immersiveMode}
     <ImmersiveControls bind:this={immersiveControls} />
+  {/if}
+  
+  <!-- Toast 提示 -->
+  {#if toastMessage}
+    <div class="toast">{toastMessage}</div>
   {/if}
 </div>
 
@@ -467,9 +545,17 @@
     max-height: 100vh;
     display: flex;
     flex-direction: column;
-    background: #1a1a1a;
+    background: var(--app-bg, #1a1a1a);
     overflow: hidden !important;
-    -webkit-app-region: no-drag;
+    color: var(--text-primary, #fff);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    padding-top: 32px;
+    box-sizing: border-box;
+  }
+  
+  .app.light {
+    background: #ffffff;
+    color: #333;
   }
   
   .app.fullscreen {
@@ -483,7 +569,6 @@
     flex: 1;
     position: relative;
     overflow: hidden;
-    -webkit-app-region: no-drag;
   }
   
   .loading,
@@ -494,7 +579,7 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #fff;
+    color: var(--text-primary, #fff);
   }
   
   .spinner {
@@ -521,16 +606,36 @@
   
   .welcome p {
     font-size: 18px;
-    color: #999;
+    color: var(--text-muted, #999);
     margin: 8px 0;
   }
   
   .welcome .hint {
     font-size: 14px;
-    color: #666;
+    color: var(--text-muted-dim, #666);
   }
   
   .error {
     color: #ff6b6b;
+  }
+  
+  .toast {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 10001;
+    animation: toastIn 0.3s ease;
+    pointer-events: none;
+  }
+  
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
   }
 </style>

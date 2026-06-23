@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { viewerState } from '../stores/viewer';
+  import { theme } from '../stores/theme';
   import type { DirectoryEntry, ThumbnailData } from '../types/image';
 
   export let currentPath: string = '';
+
+  $: isLight = $theme === 'light';
 
   let files: DirectoryEntry[] = [];
   let thumbnails = new Map<string, string>(); // path -> base64
@@ -95,7 +98,7 @@
 </script>
 
 {#if $viewerState.showThumbnails}
-  <aside class="sidebar">
+  <aside class="sidebar" class:light={isLight}>
     <div class="sidebar-header">
       <h3>缩略图</h3>
       <button 
@@ -152,6 +155,12 @@
     flex-direction: column;
     z-index: 50;
     animation: slideIn 0.2s ease;
+    transition: background-color 0.3s, border-color 0.3s;
+  }
+
+  .sidebar.light {
+    background: #f5f5f5;
+    border-right-color: #ddd;
   }
 
   @keyframes slideIn {
@@ -175,6 +184,10 @@
     margin: 0;
     color: #fff;
     font-size: 14px;
+  }
+
+  .sidebar.light .sidebar-header h3 {
+    color: #333;
   }
 
   .close-btn {
@@ -227,6 +240,10 @@
     background: #3d3d3d;
   }
 
+  .sidebar.light .thumbnail-item:hover {
+    background: #e0e0e0;
+  }
+
   .thumbnail-item.active {
     border-color: #0078d4;
   }
@@ -247,6 +264,10 @@
     justify-content: center;
   }
 
+  .sidebar.light .thumbnail-placeholder {
+    background: #e0e0e0;
+  }
+
   .thumbnail-placeholder .icon {
     font-size: 32px;
   }
@@ -259,5 +280,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     text-align: center;
+  }
+
+  .sidebar.light .thumbnail-name {
+    color: #555;
   }
 </style>

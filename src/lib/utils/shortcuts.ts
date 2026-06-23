@@ -107,7 +107,7 @@ function flipVertical() {
   viewerActions.toggleFlipV();
 }
 
-function setFitMode(mode: 'fit' | 'fill' | 'actual' | 'width' | 'custom') {
+function setFitMode(mode: 'fit' | 'fill' | 'actual' | 'width' | 'custom' | 'auto') {
   viewerActions.setFitMode(mode);
 }
 

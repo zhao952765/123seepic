@@ -23,6 +23,15 @@ declare global {
       isMaximized: () => Promise<boolean>;
       onMaximizedChange: (callback: (isMaximized: boolean) => void) => () => void;
 
+      // 空白区域窗口拖拽
+      startWindowDrag: (screenX: number, screenY: number) => void;
+      moveWindowDrag: (screenX: number, screenY: number) => void;
+      endWindowDrag: () => void;
+
+      // 文件关联
+      registerFileAssociations: (extensions: string[]) => Promise<boolean>;
+      unregisterFileAssociations: (extensions: string[]) => Promise<boolean>;
+
       // 文件打开事件
       onFileOpenRequest: (callback: (filePath: string) => void) => () => void;
 

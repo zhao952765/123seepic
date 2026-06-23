@@ -1,9 +1,12 @@
 <script lang="ts">
   import { viewerState } from '../stores/viewer';
+  import { theme } from '../stores/theme';
   import { formatFileSize } from '../utils/imageProcessor';
+
+  $: isLight = $theme === 'light';
 </script>
 
-<div class="status-bar">
+<div class="status-bar" class:light={isLight}>
   <div class="status-left">
     {#if $viewerState.imageInfo}
       <span>{$viewerState.imageInfo.width} × {$viewerState.imageInfo.height}</span>
@@ -38,6 +41,13 @@
     color: #ccc;
     font-size: 12px;
     user-select: none;
+    transition: background-color 0.3s, border-color 0.3s, color 0.3s;
+  }
+
+  .status-bar.light {
+    background: #f0f0f0;
+    border-top-color: #ddd;
+    color: #555;
   }
 
   .status-left,
@@ -49,5 +59,9 @@
 
   .separator {
     color: #555;
+  }
+
+  .status-bar.light .separator {
+    color: #aaa;
   }
 </style>

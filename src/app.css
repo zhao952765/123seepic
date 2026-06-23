@@ -188,7 +188,130 @@ body.immersive .image-canvas {
   height: 100% !important;
 }
 
+/* 沉浸模式控制栏层级 */
+body.immersive .immersive-controls {
+  z-index: 100 !important;
+}
+
+body.immersive .immersive-drag-region {
+  z-index: 1001 !important;
+}
+
 /* 沉浸模式下禁用右键菜单 */
 body.immersive .context-menu {
   display: none !important;
+}
+
+/* ════════════════════════════════════════════ */
+/*  浅色主题                                     */
+/* ════════════════════════════════════════════ */
+
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f0f0;
+  --text-primary: #1a1a1a;
+  --text-secondary: #444444;
+  --text-muted: #666666;
+  --accent-color: #0078d4;
+  --accent-hover: #106ebe;
+  --border-color: #e0e0e0;
+  --shadow-color: rgba(0, 0, 0, 0.08);
+  --app-bg: #ffffff;
+  --text-muted-dim: #888888;
+  --canvas-bg: #ffffff;
+}
+
+[data-theme="light"] #app,
+[data-theme="light"] .app-root,
+[data-theme="light"] .app {
+  background: #ffffff;
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .image-viewer-container {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .titlebar {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+[data-theme="light"] .titlebar .app-title {
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .titlebar .window-controls button {
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .titlebar .window-controls button:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .context-menu {
+  background: rgba(252, 252, 252, 0.96);
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .menu-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .menu-shortcut {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="light"] .menu-separator {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .toolbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .status-bar {
+  background: #ffffff;
+  border-top: 1px solid #e0e0e0;
+  color: #444;
+}
+
+[data-theme="light"] .sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .info-panel {
+  background: #ffffff;
+  border-left: 1px solid #e0e0e0;
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .spinner {
+  border-color: #e0e0e0;
+  border-top-color: #0078d4;
+}
+
+[data-theme="light"] .immersive-controls {
+  background: rgba(243, 243, 243, 0.9);
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .immersive-drag-region::after {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* 沉浸模式浅色主题保持深色 */
+[data-theme="light"] body.immersive .app,
+[data-theme="light"] body.immersive .main-content,
+[data-theme="light"] body.immersive .image-viewer-container {
+  background: #000 !important;
+  color: #fff;
 }

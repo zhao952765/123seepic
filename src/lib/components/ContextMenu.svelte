@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+  import { createEventDispatcher, onMount, tick } from 'svelte';
   
   export let visible = false;
   export let x = 0;
   export let y = 0;
   
   const dispatch = createEventDispatcher();
-  const MENU_WIDTH = 240;
-  const MENU_HEIGHT = 360;
+  const MENU_WIDTH = 260;
   
   let adjustedX = 0;
   let adjustedY = 0;
+  let menuEl: HTMLElement | null = null;
   
   function handleAction(action: string) {
     dispatch('action', action);
@@ -24,15 +24,22 @@
     }
   }
   
-  function recalcPosition() {
+  async function recalcPosition() {
+    await tick();
     adjustedX = x;
     adjustedY = y;
+    
     if (adjustedX + MENU_WIDTH > window.innerWidth) {
       adjustedX = window.innerWidth - MENU_WIDTH - 10;
     }
-    if (adjustedY + MENU_HEIGHT > window.innerHeight) {
-      adjustedY = window.innerHeight - MENU_HEIGHT - 10;
+    
+    if (menuEl) {
+      const menuHeight = menuEl.offsetHeight;
+      if (adjustedY + menuHeight > window.innerHeight) {
+        adjustedY = window.innerHeight - menuHeight - 10;
+      }
     }
+    
     adjustedX = Math.max(0, adjustedX);
     adjustedY = Math.max(0, adjustedY);
   }
@@ -56,6 +63,7 @@
 {#if visible}
   <div 
     class="context-menu" 
+    bind:this={menuEl}
     style="left: {adjustedX}px; top: {adjustedY}px;"
     on:click|stopPropagation
     role="menu"
@@ -77,13 +85,13 @@
     <div class="menu-item" on:click={() => handleAction('rotateRight')} role="menuitem">
       <span class="menu-icon">↻</span>
       <span class="menu-label">顺时针旋转</span>
-      <span class="menu-shortcut">Ctrl + R</span>
+      <span class="menu-shortcut">Ctrl+R</span>
     </div>
     
     <div class="menu-item" on:click={() => handleAction('rotateLeft')} role="menuitem">
       <span class="menu-icon">↺</span>
       <span class="menu-label">逆时针旋转</span>
-      <span class="menu-shortcut">Ctrl + L</span>
+      <span class="menu-shortcut">Ctrl+L</span>
     </div>
     
     <div class="menu-separator"></div>
@@ -91,13 +99,13 @@
     <div class="menu-item" on:click={() => handleAction('flipH')} role="menuitem">
       <span class="menu-icon">↔</span>
       <span class="menu-label">水平翻转</span>
-      <span class="menu-shortcut">Ctrl + H</span>
+      <span class="menu-shortcut">Ctrl+H</span>
     </div>
     
     <div class="menu-item" on:click={() => handleAction('flipV')} role="menuitem">
       <span class="menu-icon">↕</span>
       <span class="menu-label">垂直翻转</span>
-      <span class="menu-shortcut">Ctrl + V</span>
+      <span class="menu-shortcut">Ctrl+V</span>
     </div>
     
     <div class="menu-separator"></div>
@@ -105,13 +113,13 @@
     <div class="menu-item" on:click={() => handleAction('fitWindow')} role="menuitem">
       <span class="menu-icon">⊡</span>
       <span class="menu-label">适应窗口</span>
-      <span class="menu-shortcut">Ctrl + 0</span>
+      <span class="menu-shortcut">Ctrl+0</span>
     </div>
     
     <div class="menu-item" on:click={() => handleAction('actualSize')} role="menuitem">
       <span class="menu-icon">1:1</span>
       <span class="menu-label">实际尺寸</span>
-      <span class="menu-shortcut">Ctrl + 1</span>
+      <span class="menu-shortcut">Ctrl+1</span>
     </div>
     
     <div class="menu-separator"></div>
@@ -119,7 +127,7 @@
     <div class="menu-item" on:click={() => handleAction('copy')} role="menuitem">
       <span class="menu-icon">📋</span>
       <span class="menu-label">复制</span>
-      <span class="menu-shortcut">Ctrl + C</span>
+      <span class="menu-shortcut">Ctrl+C</span>
     </div>
     
     <div class="menu-item" on:click={() => handleAction('openInExplorer')} role="menuitem">
@@ -134,10 +142,18 @@
     
     <div class="menu-separator"></div>
     
+    <!-- 设置 -->
+    <div class="menu-item" on:click={() => handleAction('settings')} role="menuitem">
+      <span class="menu-icon">⚙️</span>
+      <span class="menu-label">设置</span>
+    </div>
+    
+    <div class="menu-separator"></div>
+    
     <div class="menu-item" on:click={() => handleAction('showInfo')} role="menuitem">
       <span class="menu-icon">ℹ️</span>
       <span class="menu-label">属性</span>
-      <span class="menu-shortcut">Ctrl + I</span>
+      <span class="menu-shortcut">Ctrl+I</span>
     </div>
   </div>
 {/if}
@@ -146,6 +162,8 @@
   .context-menu {
     position: fixed;
     min-width: 240px;
+    max-height: calc(100vh - 20px);
+    overflow-y: auto;
     background: rgba(30, 30, 30, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
@@ -171,12 +189,13 @@
   .menu-item {
     display: flex;
     align-items: center;
-    padding: 8px 12px;
-    margin: 2px 6px;
+    padding: 7px 12px;
+    margin: 1px 6px;
     border-radius: 4px;
     cursor: pointer;
     transition: background-color 0.1s ease;
     font-size: 13px;
+    position: relative;
   }
   
   .menu-item:hover {
@@ -184,28 +203,48 @@
   }
   
   .menu-icon {
-    width: 24px;
-    margin-right: 12px;
+    width: 22px;
+    margin-right: 10px;
     text-align: center;
-    font-size: 14px;
+    font-size: 13px;
     opacity: 0.9;
+    flex-shrink: 0;
   }
   
   .menu-label {
     flex: 1;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   
   .menu-shortcut {
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 12px;
-    margin-left: 16px;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    margin-left: 12px;
     white-space: nowrap;
+    flex-shrink: 0;
+  }
+  
+  .menu-arrow {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
+    margin-left: 8px;
+    flex-shrink: 0;
   }
   
   .menu-separator {
     height: 1px;
-    background: rgba(255, 255, 255, 0.1);
-    margin: 6px 12px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 4px 12px;
+  }
+  
+  .context-menu::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  .context-menu::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
   }
 </style>

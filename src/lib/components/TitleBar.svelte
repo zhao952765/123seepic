@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { theme } from '$lib/stores/theme';
 
   let isMaximized = false;
   let cleanupMaximized: (() => void) | null = null;
+  $: isLight = $theme === 'light';
 
   onMount(async () => {
     // 初始化最大化状态
@@ -47,7 +49,7 @@
   }
 </script>
 
-<div class="titlebar">
+<div class="titlebar" class:light={isLight}>
   <div class="titlebar-left">
     <span class="app-title">123看图</span>
   </div>
@@ -126,16 +128,24 @@
     transition: background-color 0.15s ease;
   }
   
-  .titlebar-button:hover {
+ .titlebar-button:hover {
     background: rgba(255, 255, 255, 0.1);
   }
   
   .titlebar-button.close:hover {
     background: #e81123;
-    color: white;
+    color: #fff;
   }
-  
-  .titlebar-button svg {
-    pointer-events: none;
+
+  .titlebar.light .app-title {
+    color: rgba(0, 0, 0, 0.8);
+  }
+
+  .titlebar.light .titlebar-button {
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .titlebar.light .titlebar-button:hover {
+    background: rgba(0, 0, 0, 0.08);
   }
 </style>

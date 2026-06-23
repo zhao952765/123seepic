@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { viewerState, viewerActions } from '../stores/viewer';
+  import { viewerState, viewerActions, boundaryBlocked } from '../stores/viewer';
+  import { theme } from '../stores/theme';
   import { get } from 'svelte/store';
   import { 
     loadImageAsBitmap, 
@@ -41,6 +42,11 @@
   // ✅ 设备像素比（高DPI支持）
   let dpr = 1;
   
+  // ✅ 主题切换时触发重绘
+  $: if ($theme) {
+    markForRender();
+  }
+  
   // ✅ 惯性动画引擎
   let zoomInertia: InertiaEngine | null = null;
   let panInertiaX: InertiaEngine | null = null;
@@ -59,6 +65,11 @@
   let wheelRafId: number | null = null;
   let pendingZoom: number | null = null;
   let fileNavCooldown: number | null = null;
+
+  // 窗口最大化/还原状态追踪
+  let windowMaximized = false;
+  let cleanupMaximized: (() => void) | null = null;
+  let isMaximizeRestoreEvent = false;
 
   // 初始化 Canvas
   onMount(async () => {
@@ -83,6 +94,15 @@
     preloadAdjacentImages();
 
     window.addEventListener('resize', handleResize);
+
+    windowMaximized = await window.electronAPI?.isMaximized() || false;
+    cleanupMaximized = window.electronAPI?.onMaximizedChange((maximized: boolean) => {
+      isMaximizeRestoreEvent = true;
+      windowMaximized = maximized;
+      handleResize();
+      isMaximizeRestoreEvent = false;
+    });
+
     perfMonitor.start();
     requestRenderLoop();
   });
@@ -90,6 +110,7 @@
   onDestroy(() => {
     // ✅ 清理资源
     window.removeEventListener('resize', handleResize);
+    if (cleanupMaximized) cleanupMaximized();
     
     if (animationFrameId) {
       cancelAnimationFrame(animationFrameId);
@@ -166,11 +187,19 @@
     }
   }
   
+  // 加载新图片时重置为实际尺寸
+  $: if (filePath) {
+    viewerActions.setFitMode('actual');
+  }
+  
   // KN-002: 加载 GIF 为动画 Image 元素
   async function loadGifImage() {
     try {
-      const buffer = await window.electronAPI.readFileBuffer(filePath);
-      const blob = new Blob([buffer], { type: 'image/gif' });
+      const raw = await window.electronAPI.readFileBuffer(filePath);
+      const typedArray = raw && raw.type === 'Buffer' && Array.isArray(raw.data)
+        ? new Uint8Array(raw.data)
+        : raw;
+      const blob = new Blob([typedArray], { type: 'image/gif' });
       gifObjectUrl = URL.createObjectURL(blob);
       
       gifImage = new Image();
@@ -213,7 +242,7 @@
   }
 
   // ✅ 自动适应窗口
-  function autoFit() {
+  function autoFit(force: boolean = false) {
     const imgWidth = isGif ? (gifImage?.naturalWidth || 0) : (imageBitmap?.width || 0);
     const imgHeight = isGif ? (gifImage?.naturalHeight || 0) : (imageBitmap?.height || 0);
     
@@ -221,8 +250,7 @@
     
     const state = get(viewerState);
     
-    // 'custom' 模式：用户手动缩放，不覆盖 zoom
-    if (state.fitMode === 'custom') {
+    if (!force && state.fitMode === 'custom') {
       return;
     }
     
@@ -236,6 +264,15 @@
       const scaleX = containerWidth / imgWidth;
       const scaleY = containerHeight / imgHeight;
       targetZoom = Math.min(scaleX, scaleY);
+    } else if (state.fitMode === 'auto') {
+      // 智能适应：图片大于界面时适配，小于界面时用实际尺寸
+      if (imgWidth > containerWidth || imgHeight > containerHeight) {
+        const scaleX = containerWidth / imgWidth;
+        const scaleY = containerHeight / imgHeight;
+        targetZoom = Math.min(scaleX, scaleY);
+      } else {
+        targetZoom = 1;
+      }
     } else if (state.fitMode === 'fill') {
       // 填充窗口
       const scaleX = containerWidth / imgWidth;
@@ -302,7 +339,7 @@
         const renderTime = performance.now() - startTime;
         
         // ✅ 记录性能指标
-        if (imageBitmap) {
+        if (imageBitmap && canvas) {
           perfMonitor.recordFrame(renderTime, canvas, dpr, imageBitmap);
         }
         
@@ -322,7 +359,7 @@
     const height = container.clientHeight;
     
     // ✅ 清空画布（始终执行，避免透明 canvas 显示穿透内容）
-    ctx.fillStyle = '#1a1a1a';
+    ctx.fillStyle = $theme === 'light' ? '#ffffff' : '#1a1a1a';
     ctx.fillRect(0, 0, width, height);
     
     const imgWidth = isGif ? (gifImage?.naturalWidth || 0) : (imageBitmap?.width || 0);
@@ -375,10 +412,27 @@
 
   // ✅ 处理窗口大小变化
   function handleResize() {
-    // ✅ 更新DPR（可能在不同显示器间移动）
     dpr = window.devicePixelRatio || 1;
     resizeCanvas();
-    autoFit();
+
+    const state = get(viewerState);
+    const imgWidth = isGif ? (gifImage?.naturalWidth || 0) : (imageBitmap?.width || 0);
+    const imgHeight = isGif ? (gifImage?.naturalHeight || 0) : (imageBitmap?.height || 0);
+    if (!imgWidth || !imgHeight || !container) return;
+
+    const drawWidth = imgWidth * state.zoom;
+    const drawHeight = imgHeight * state.zoom;
+    const viewWidth = container.clientWidth;
+    const viewHeight = container.clientHeight;
+
+    if (state.fitMode === 'fit' || state.fitMode === 'auto' || isMaximizeRestoreEvent) {
+      autoFit();
+      return;
+    }
+
+    if (drawWidth > viewWidth || drawHeight > viewHeight) {
+      autoFit(true);
+    }
   }
 
   // ✅ 滚轮：Ctrl+Wheel 指数缩放，Plain Wheel 翻文件
@@ -440,9 +494,36 @@
         const idx = imageFiles.indexOf(filePath);
         if (idx === -1) return;
 
+        const isLast = idx >= imageFiles.length - 1;
+        const isFirst = idx <= 0;
+
+        if (event.deltaY > 0 && isLast) {
+          if (get(boundaryBlocked) === 'last') {
+            boundaryBlocked.set(null);
+          } else {
+            window.dispatchEvent(new CustomEvent('toast', {
+              detail: '已经是最后一张'
+            }));
+            boundaryBlocked.set('last');
+            return;
+          }
+        } else if (event.deltaY < 0 && isFirst) {
+          if (get(boundaryBlocked) === 'first') {
+            boundaryBlocked.set(null);
+          } else {
+            window.dispatchEvent(new CustomEvent('toast', {
+              detail: '已经是第一张'
+            }));
+            boundaryBlocked.set('first');
+            return;
+          }
+        } else {
+          boundaryBlocked.set(null);
+        }
+
         const nextIdx = event.deltaY > 0
-          ? Math.min(imageFiles.length - 1, idx + 1)
-          : Math.max(0, idx - 1);
+          ? (idx + 1) % imageFiles.length
+          : (idx - 1 + imageFiles.length) % imageFiles.length;
 
         if (nextIdx !== idx) {
           window.dispatchEvent(new CustomEvent('file-select', {
@@ -481,17 +562,60 @@
     zoomInertia.start(velocity * 0.01); // 调整惯性强度
   }
 
-  // ✅ 鼠标拖拽（带惯性）
+  function isMouseOnImage(mx: number, my: number): boolean {
+    const state = get(viewerState);
+    const imgWidth = isGif ? (gifImage?.naturalWidth || 0) : (imageBitmap?.width || 0);
+    const imgHeight = isGif ? (gifImage?.naturalHeight || 0) : (imageBitmap?.height || 0);
+    if (!imgWidth || !imgHeight || !container) return false;
+
+    const drawWidth = imgWidth * state.zoom;
+    const drawHeight = imgHeight * state.zoom;
+    const centerX = container.clientWidth / 2 + offsetX;
+    const centerY = container.clientHeight / 2 + offsetY;
+
+    return (
+      mx >= centerX - drawWidth / 2 &&
+      mx <= centerX + drawWidth / 2 &&
+      my >= centerY - drawHeight / 2 &&
+      my <= centerY + drawHeight / 2
+    );
+  }
+
+  let isWindowDragging = false;
+
   function handleMouseDown(event: MouseEvent) {
-    if (event.button === 0) { // 左键
+    if (event.button === 0) {
+      const onImage = isMouseOnImage(event.offsetX, event.offsetY);
+      if (!onImage) {
+        isWindowDragging = true;
+        window.electronAPI?.startWindowDrag(event.screenX, event.screenY);
+        window.addEventListener('mousemove', handleWindowDragMove);
+        window.addEventListener('mouseup', handleWindowDragEnd);
+        return;
+      }
+
       isDragging = true;
       dragStartX = event.clientX - offsetX;
       dragStartY = event.clientY - offsetY;
       canvas.style.cursor = 'grabbing';
-      
-      // ✅ 停止之前的平移惯性
+
       panInertiaX?.stop();
       panInertiaY?.stop();
+    }
+  }
+
+  function handleWindowDragMove(event: MouseEvent) {
+    if (isWindowDragging) {
+      window.electronAPI?.moveWindowDrag(event.screenX, event.screenY);
+    }
+  }
+
+  function handleWindowDragEnd() {
+    if (isWindowDragging) {
+      isWindowDragging = false;
+      window.electronAPI?.endWindowDrag();
+      window.removeEventListener('mousemove', handleWindowDragMove);
+      window.removeEventListener('mouseup', handleWindowDragEnd);
     }
   }
 
@@ -500,6 +624,9 @@
       offsetX = event.clientX - dragStartX;
       offsetY = event.clientY - dragStartY;
       markForRender();
+    } else if (!isWindowDragging) {
+      const onImage = isMouseOnImage(event.offsetX, event.offsetY);
+      canvas.style.cursor = onImage ? 'grab' : 'default';
     }
   }
 
@@ -507,15 +634,15 @@
     if (isDragging) {
       isDragging = false;
       canvas.style.cursor = 'grab';
-      
-      // ✅ 计算拖拽末速度并启动惯性
+
       const velocityX = event.movementX || 0;
       const velocityY = event.movementY || 0;
-      
+
       if (Math.abs(velocityX) > 1 || Math.abs(velocityY) > 1) {
         startPanInertia(velocityX, velocityY);
       }
     }
+    handleWindowDragEnd();
   }
   
   // ✅ 启动平移惯性
@@ -551,12 +678,12 @@
   function handleDoubleClick() {
     const state = get(viewerState);
     
-    if (state.fitMode === 'fit') {
+    if (state.fitMode === 'auto' || state.fitMode === 'fit') {
       // 当前是适应模式 → 切换到实际尺寸
       viewerActions.setZoomAndFitMode(1, 'actual');
     } else {
-      // 当前是自定义或实际尺寸 → 切换到适应窗口
-      viewerActions.setFitMode('fit');
+      // 当前是自定义或实际尺寸 → 切换到智能适应
+      viewerActions.setFitMode('auto');
       autoFit();
     }
     
@@ -606,15 +733,16 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: #1a1a1a;
+    background: var(--canvas-bg, #1a1a1a);
     cursor: grab;
+    transition: background-color 0.3s ease;
   }
   
   .image-canvas {
     width: 100%;
     height: 100%;
     display: block;
-    /* ✅ 确保Canvas不应用CSS变换 */
+    -webkit-app-region: no-drag;
     transform: none !important;
   }
 </style>
